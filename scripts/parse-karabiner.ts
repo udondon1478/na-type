@@ -274,13 +274,35 @@ function main() {
     }
   }
 
+  // 重複排除: 同じかなに複数エントリがある場合、シンクロ版（全キー）を優先
+  const kanaGroups = new Map<string, ParsedMapping[]>();
+  for (const m of mappings) {
+    const group = kanaGroups.get(m.kana) ?? [];
+    group.push(m);
+    kanaGroups.set(m.kana, group);
+  }
+  const deduped: ParsedMapping[] = [];
+  for (const [, entries] of kanaGroups) {
+    if (entries.length === 1) {
+      deduped.push(entries[0]);
+      continue;
+    }
+    const synchro = entries.find(e => e.description.includes("(シンクロ)"));
+    if (synchro) {
+      deduped.push(synchro);
+    } else {
+      entries.sort((a, b) => b.keys.length - a.keys.length);
+      deduped.push(entries[0]);
+    }
+  }
+
   console.log(`\nパース結果:`);
-  console.log(`  成功: ${mappings.length}`);
+  console.log(`  成功: ${mappings.length} → 重複排除後: ${deduped.length}`);
   console.log(`  スキップ: ${skipped.length}`);
 
   // 種類別集計
   const byType: Record<string, number> = {};
-  for (const m of mappings) {
+  for (const m of deduped) {
     byType[m.inputType] = (byType[m.inputType] ?? 0) + 1;
   }
   console.log(`\n種類別:`);
@@ -305,7 +327,7 @@ function main() {
 import type { KanaMapping, KeyboardLayout } from "@/types/layout";
 
 export const naginataMappings: KanaMapping[] = ${JSON.stringify(
-    mappings.map((m) => ({
+    deduped.map((m) => ({
       kana: m.kana,
       inputType: m.inputType,
       keys: m.keys,
