@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getLessonByNumber } from "@/data/naginata/lessons";
 import { TypingArea } from "@/components/typing/TypingArea";
@@ -14,8 +15,13 @@ interface LessonClientProps {
 export function LessonClient({ lessonId }: LessonClientProps) {
   const lessonNum = parseInt(lessonId, 10);
   const lesson = getLessonByNumber(lessonNum);
+  const router = useRouter();
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [lastResult, setLastResult] = useState<SessionResult | null>(null);
+
+  const isLastExercise = lesson
+    ? currentExerciseIndex === lesson.exercises.length - 1
+    : false;
 
   const handleComplete = useCallback(
     (result: SessionResult) => {
@@ -23,6 +29,24 @@ export function LessonClient({ lessonId }: LessonClientProps) {
     },
     []
   );
+
+  // 完了時のキーボード操作
+  useEffect(() => {
+    if (!lastResult) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (!isLastExercise) {
+          setCurrentExerciseIndex((prev) => prev + 1);
+          setLastResult(null);
+        } else if (lessonNum < 8) {
+          router.push(`/naginata/lesson/${lessonNum + 1}`);
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lastResult, isLastExercise, lessonNum, router]);
 
   if (!lesson) {
     return (
@@ -41,8 +65,9 @@ export function LessonClient({ lessonId }: LessonClientProps) {
   }
 
   const currentExercise = lesson.exercises[currentExerciseIndex];
-  const isLastExercise =
-    currentExerciseIndex === lesson.exercises.length - 1;
+  const targetText = currentExercise.segments
+    ? currentExercise.segments.map((s) => s.reading).join("")
+    : currentExercise.text;
 
   const handleNextExercise = () => {
     if (!isLastExercise) {
@@ -53,12 +78,18 @@ export function LessonClient({ lessonId }: LessonClientProps) {
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between">
         <Link
           href="/naginata"
           className="text-muted-foreground hover:text-foreground text-sm"
         >
           ← レッスン一覧
+        </Link>
+        <Link
+          href={`/naginata/drill?level=${lessonNum}`}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          単語ドリル →
         </Link>
       </div>
 
@@ -96,7 +127,8 @@ export function LessonClient({ lessonId }: LessonClientProps) {
         key={currentExercise.id}
         lessonId={lesson.id}
         exerciseId={currentExercise.id}
-        targetText={currentExercise.text}
+        targetText={targetText}
+        displaySegments={currentExercise.segments}
         onComplete={handleComplete}
       />
 
@@ -106,6 +138,7 @@ export function LessonClient({ lessonId }: LessonClientProps) {
           className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           次の練習へ →
+          <kbd className="ml-2 text-xs opacity-60">Enter</kbd>
         </button>
       )}
 
@@ -127,6 +160,7 @@ export function LessonClient({ lessonId }: LessonClientProps) {
                 className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
               >
                 レッスン {lessonNum + 1} へ →
+                <kbd className="ml-2 text-xs opacity-60">Enter</kbd>
               </Link>
             )}
           </div>

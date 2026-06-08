@@ -1,9 +1,8 @@
 import { LessonClient } from "./LessonClient";
-
-const LESSON_IDS = ["1", "2", "3", "4", "5", "6", "7", "8"];
+import { naginataLessons } from "@/data/naginata/lessons";
 
 export function generateStaticParams() {
-  return LESSON_IDS.map((id) => ({ id }));
+  return naginataLessons.map((_, i) => ({ id: String(i + 1) }));
 }
 
 export default async function LessonPage({
