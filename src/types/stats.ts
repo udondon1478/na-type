@@ -22,7 +22,11 @@ export interface LessonProgress {
   sessionCount: number;
 }
 
+export type InputMethod = "karabiner" | "remapping" | "romaji";
+
 export interface AppSettings {
   showKeyboard: boolean;
   layoutView: "qwerty" | "kana";
+  /** 入力方式（undefined = 未設定→セットアップ画面表示） */
+  inputMethod?: InputMethod;
 }

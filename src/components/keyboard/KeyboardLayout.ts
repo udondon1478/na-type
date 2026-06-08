@@ -4,6 +4,17 @@ const KEY_WIDTH = 48;
 const KEY_HEIGHT = 48;
 const KEY_GAP = 4;
 
+/** Karabiner key_code → KeyboardEvent.code マッピング */
+export const KARABINER_TO_EVENT_CODE: Record<string, string> = {
+  q: "KeyQ", w: "KeyW", e: "KeyE", r: "KeyR", t: "KeyT",
+  y: "KeyY", u: "KeyU", i: "KeyI", o: "KeyO", p: "KeyP",
+  a: "KeyA", s: "KeyS", d: "KeyD", f: "KeyF", g: "KeyG",
+  h: "KeyH", j: "KeyJ", k: "KeyK", l: "KeyL", semicolon: "Semicolon",
+  z: "KeyZ", x: "KeyX", c: "KeyC", v: "KeyV", b: "KeyB",
+  n: "KeyN", m: "KeyM", comma: "Comma", period: "Period", slash: "Slash",
+  spacebar: "Space",
+};
+
 function key(
   karabinerCode: string,
   qwertyLabel: string,
@@ -18,20 +29,9 @@ function key(
   const x = rowOffsets[row] + col * (KEY_WIDTH + KEY_GAP);
   const y = row * (KEY_HEIGHT + KEY_GAP);
 
-  // Karabiner key_code → KeyboardEvent.code
-  const codeMap: Record<string, string> = {
-    q: "KeyQ", w: "KeyW", e: "KeyE", r: "KeyR", t: "KeyT",
-    y: "KeyY", u: "KeyU", i: "KeyI", o: "KeyO", p: "KeyP",
-    a: "KeyA", s: "KeyS", d: "KeyD", f: "KeyF", g: "KeyG",
-    h: "KeyH", j: "KeyJ", k: "KeyK", l: "KeyL", semicolon: "Semicolon",
-    z: "KeyZ", x: "KeyX", c: "KeyC", v: "KeyV", b: "KeyB",
-    n: "KeyN", m: "KeyM", comma: "Comma", period: "Period", slash: "Slash",
-    spacebar: "Space",
-  };
-
   return {
     karabinerCode,
-    eventCode: codeMap[karabinerCode] ?? karabinerCode,
+    eventCode: KARABINER_TO_EVENT_CODE[karabinerCode] ?? karabinerCode,
     qwertyLabel,
     x,
     y,

@@ -67,3 +67,7 @@ export function updateSettings(partial: Partial<AppSettings>): void {
   const settings = getSettings();
   setItem(KEYS.settings, { ...settings, ...partial });
 }
+
+export function isSetupCompleted(): boolean {
+  return getSettings().inputMethod !== undefined;
+}
