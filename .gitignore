@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code / claude-mem (local tooling, not part of the project)
+.claude/
+.agent/
+
+# claude-mem auto-generated per-directory context (root CLAUDE.md is tracked)
+**/CLAUDE.md
+!/CLAUDE.md
