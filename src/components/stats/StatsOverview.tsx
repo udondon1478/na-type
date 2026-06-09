@@ -1,31 +1,12 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState } from "react";
 import { getSessions, getProgress } from "@/lib/storage";
-import type { LessonProgress } from "@/types/stats";
-
-function useStorageData() {
-  const sessions = useSyncExternalStore(
-    (cb) => {
-      window.addEventListener("storage", cb);
-      return () => window.removeEventListener("storage", cb);
-    },
-    () => getSessions(),
-    () => []
-  );
-  const progress = useSyncExternalStore(
-    (cb) => {
-      window.addEventListener("storage", cb);
-      return () => window.removeEventListener("storage", cb);
-    },
-    () => getProgress(),
-    () => ({}) as Record<string, LessonProgress>
-  );
-  return { sessions, progress };
-}
+import type { SessionResult, LessonProgress } from "@/types/stats";
 
 export function StatsOverview() {
-  const { sessions, progress } = useStorageData();
+  const [sessions] = useState<SessionResult[]>(() => getSessions());
+  const [progress] = useState<Record<string, LessonProgress>>(() => getProgress());
 
   const totalSessions = sessions.length;
   const completedLessons = Object.values(progress).filter(

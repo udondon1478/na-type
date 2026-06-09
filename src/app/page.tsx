@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -8,8 +11,43 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatsOverview } from "@/components/stats/StatsOverview";
+import { InputMethodSetup } from "@/components/setup/InputMethodSetup";
+import { isSetupCompleted, getSettings, updateSettings } from "@/lib/storage";
+
+const INPUT_METHOD_LABELS: Record<string, string> = {
+  karabiner: "Karabiner-Elements",
+  remapping: "リマッピングツール",
+  romaji: "ローマ字入力",
+};
 
 export default function Dashboard() {
+  // 初期値false = SSRとクライアント初回レンダリングで一致（ハイドレーションエラー回避）
+  const [setupDone, setSetupDone] = useState(false);
+
+  // マウント後にlocalStorageを確認し、設定済みならダッシュボードに切り替え。
+  // localStorageはクライアントのみ参照可能なため、SSG初期状態(false)と一致させた上で
+  // マウント後に反映する定番のハイドレーション対策。effect内setStateは意図的。
+  useEffect(() => {
+    if (isSetupCompleted()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSetupDone(true);
+    }
+  }, []);
+
+  if (!setupDone) {
+    return <InputMethodSetup onComplete={() => setSetupDone(true)} />;
+  }
+
+  const settings = getSettings();
+  const methodLabel = settings.inputMethod
+    ? INPUT_METHOD_LABELS[settings.inputMethod] ?? settings.inputMethod
+    : "";
+
+  const handleResetSetup = () => {
+    updateSettings({ inputMethod: undefined as never });
+    setSetupDone(false);
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -61,6 +99,17 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span>入力方式: {methodLabel}</span>
+        <button
+          type="button"
+          onClick={handleResetSetup}
+          className="underline hover:text-foreground transition-colors"
+        >
+          変更
+        </button>
       </div>
     </div>
   );
