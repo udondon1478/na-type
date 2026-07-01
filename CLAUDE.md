@@ -19,7 +19,7 @@ Karabiner-Elementsで配列環境を構築済みのユーザーが対象。
 | 言語 | TypeScript 5 (strict) | |
 | UI | shadcn/ui + Tailwind CSS 4 | ダークテーマ固定（`class="dark"`） |
 | データ保存 | localStorage のみ | アカウント・バックエンドなし |
-| デプロイ先 | OCI VPS + Nginx | 静的ファイル配信 |
+| デプロイ先 | Cloudflare Pages | 静的ファイル配信（`out/`）。詳細は `docs/DEPLOYMENT.md` |
 
 ## 静的エクスポートの制約
 
@@ -148,4 +148,4 @@ npx tsx scripts/parse-karabiner.ts
 - 動的ルート（`[id]`）には `generateStaticParams()` が必須
 - `"use client"` と `generateStaticParams` は同じファイルに置けない（Server/Client分離）
 - shadcn/ui コンポーネントは `npx shadcn@latest add <name>` で追加
-- コミットメッセージは `.agent/rules/commit-rules.md` に従う（日本語 + Emoji）
+- コミットメッセージは `CONTRIBUTING.md` の規約に従う（Conventional Commits + gitmoji + 日本語）
