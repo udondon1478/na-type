@@ -49,7 +49,7 @@ interface LessonProgress {
 ### AppSettings
 
 ```ts
-type InputMethod = "karabiner" | "remapping" | "romaji";
+type InputMethod = "karabiner" | "remapping" | "physical";
 
 interface AppSettings {
   showKeyboard: boolean;              // キーボードガイド表示
@@ -60,6 +60,9 @@ interface AppSettings {
 
 - デフォルト: `{ showKeyboard: true, layoutView: "qwerty" }`
 - `inputMethod === undefined` が「初回セットアップ未完了」の判定に使われる（`isSetupCompleted()`）
+- `karabiner` / `remapping`: OS側で薙刀式に変換済みのかなを受け取る
+- `physical`: 変換ツールなしで物理キー位置により薙刀式を判定（例: J→あ）。Phase1は単独打鍵のみ対応（同時打鍵は #3）
+- 旧 `romaji` モードは廃止。保存済みの値は読み込み時に `physical` へ移行（`getSettings()`）
 
 ## 設計上の注意
 

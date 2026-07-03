@@ -17,7 +17,7 @@ import { isSetupCompleted, getSettings, updateSettings } from "@/lib/storage";
 const INPUT_METHOD_LABELS: Record<string, string> = {
   karabiner: "Karabiner-Elements",
   remapping: "リマッピングツール",
-  romaji: "ローマ字入力",
+  physical: "物理キー位置練習",
 };
 
 export default function Dashboard() {
