@@ -110,7 +110,10 @@ export function useTypingSession({
         let result = validateInput(inputChar, expectedChar);
 
         // フォールバック1: 物理キーコードから薙刀式かなを逆引き
-        // karabiner/remappingモード向け。物理キー位置で薙刀式かなを判定する。
+        // karabiner/remappingモード向け（OS変換が来なかった場合の保険）と、
+        // physicalモードの主判定を兼ねる。物理キー位置で薙刀式かなを判定する。
+        // physicalモードはPhase1として単独打鍵（single）のみ対応。同時打鍵
+        // （shift/濁点/combo）はresolveKeyToKanaがsingleしか解決しないため未対応。
         // （romajiモードでは物理jを「あ」と誤認するため無効化）
         if (!result.correct && keyCode && inputMethod !== "romaji") {
           const resolvedKana = resolveKeyToKana(keyCode);
