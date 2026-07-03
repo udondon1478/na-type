@@ -13,6 +13,13 @@ import type { SessionResult } from "@/types/stats";
 
 export type SessionStatus = "idle" | "active" | "completed";
 
+/**
+ * physical モードで「同時打鍵」とみなす押下の時間窓（ミリ秒）。
+ * 最初のキー押下からこの時間内に押されたキーだけを1つの同時打鍵として扱う。
+ * 一般的な高速連続打鍵（キー間隔 ≈100ms）とは十分に分離でき、意図的な同時押しは拾える。
+ */
+const CHORD_WINDOW_MS = 40;
+
 interface CharResult {
   char: string;
   correct: boolean;
@@ -54,11 +61,17 @@ export function useTypingSession({
   const onCompleteRef = useRef(onComplete);
   const finishedRef = useRef(false);
 
-  // physical モードの同時打鍵（chord）判定用
-  // heldRef: 現在押下中の event.code 集合
-  // chordRef: 押下開始〜全解放までに押された event.code の和集合
-  const heldRef = useRef<Set<string>>(new Set());
+  // physical モードの同時打鍵（chord）判定用（時間窓ベース）
+  // 最初のキー押下から CHORD_WINDOW_MS 以内に押されたキーを1つの同時打鍵とみなす。
+  // 窓が閉じた時点（またはそれより後の押下が来た時点）で塊を確定する。
+  // - pressedRef: 現在物理的に押下中の集合（オートリピートの重複keydown除去用）
+  // - chordRef:   形成中の塊（同一同時打鍵とみなすキー集合）
+  // - chordStartRef: 塊の最初のキーが押された時刻（performance.now）
+  // - flushTimerRef: 窓が閉じた時点で確定するためのタイマー
+  const pressedRef = useRef<Set<string>>(new Set());
   const chordRef = useRef<Set<string>>(new Set());
+  const chordStartRef = useRef<number | null>(null);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -210,22 +223,21 @@ export function useTypingSession({
   );
 
   // physical モード: キー押下 → chord に蓄積（keydown 時点では確定しない）
-  const processChordKeyDown = useCallback((code: string) => {
-    heldRef.current.add(code);
-    chordRef.current.add(code);
-  }, []);
-
-  // physical モード: キー解放 → held が空になった時点で chord を確定・判定
-  // （release ベース＝薙刀式の同時打鍵に自然に一致。押し順が前後しても和集合で判定）
-  const processChordKeyUp = useCallback(
-    (code: string) => {
-      heldRef.current.delete(code);
-      // まだ押下中のキーがあれば確定しない（プレフィックス誤発火を防ぐ）
-      if (heldRef.current.size > 0) return;
-      if (chordRef.current.size === 0) return;
+  // 形成中の塊を確定して目標かなと照合する（時間窓の満了・別打鍵の割込み時に呼ばれる）
+  const commitChord = useCallback(
+    () => {
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      if (chordRef.current.size === 0) {
+        chordStartRef.current = null;
+        return;
+      }
 
       const codes = [...chordRef.current];
       chordRef.current = new Set();
+      chordStartRef.current = null;
       const resolved = resolveChordToKana(codes);
 
       setState((prev) => {
@@ -289,10 +301,51 @@ export function useTypingSession({
     [finishSession]
   );
 
+  // physical モード: キー押下 → 時間窓で同時打鍵をクラスタリング
+  const processChordKeyDown = useCallback(
+    (code: string, timestamp: number) => {
+      // オートリピート由来の重複keydownは無視
+      if (pressedRef.current.has(code)) return;
+      pressedRef.current.add(code);
+
+      const start = chordStartRef.current;
+      if (start === null) {
+        // 新しい塊を開始し、窓が閉じる時刻に確定を予約
+        chordRef.current = new Set([code]);
+        chordStartRef.current = timestamp;
+        flushTimerRef.current = setTimeout(commitChord, CHORD_WINDOW_MS);
+      } else if (timestamp - start <= CHORD_WINDOW_MS) {
+        // 窓の内側 → 同一同時打鍵に追加（確定時刻は最初の押下基準のまま）
+        chordRef.current.add(code);
+      } else {
+        // 窓の外側 → 別打鍵。現在の塊を即確定してから新しい塊を開始
+        commitChord();
+        chordRef.current = new Set([code]);
+        chordStartRef.current = timestamp;
+        flushTimerRef.current = setTimeout(commitChord, CHORD_WINDOW_MS);
+      }
+    },
+    [commitChord]
+  );
+
+  // physical モード: キー解放 → 押下集合の追跡のみ（確定は時間窓が担う）
+  const processChordKeyUp = useCallback((code: string) => {
+    pressedRef.current.delete(code);
+  }, []);
+
+  const clearChord = useCallback(() => {
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    pressedRef.current = new Set();
+    chordRef.current = new Set();
+    chordStartRef.current = null;
+  }, []);
+
   const reset = useCallback(() => {
     finishedRef.current = false;
-    heldRef.current = new Set();
-    chordRef.current = new Set();
+    clearChord();
     setState({
       status: "idle",
       targetText,
@@ -301,7 +354,10 @@ export function useTypingSession({
       missCount: 0,
       startTime: null,
     });
-  }, [targetText]);
+  }, [targetText, clearChord]);
+
+  // アンマウント時に保留中の確定タイマーを破棄
+  useEffect(() => clearChord, [clearChord]);
 
   return {
     ...state,
