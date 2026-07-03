@@ -60,7 +60,12 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export function getSettings(): AppSettings {
-  return getItem<AppSettings>(KEYS.settings, DEFAULT_SETTINGS);
+  const settings = getItem<AppSettings>(KEYS.settings, DEFAULT_SETTINGS);
+  // 移行: 廃止した "romaji" モードは物理キー位置練習の "physical" に読み替える
+  if ((settings.inputMethod as string) === "romaji") {
+    return { ...settings, inputMethod: "physical" };
+  }
+  return settings;
 }
 
 export function updateSettings(partial: Partial<AppSettings>): void {

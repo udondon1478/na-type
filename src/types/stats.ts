@@ -22,7 +22,7 @@ export interface LessonProgress {
   sessionCount: number;
 }
 
-export type InputMethod = "karabiner" | "remapping" | "romaji";
+export type InputMethod = "karabiner" | "remapping" | "physical";
 
 export interface AppSettings {
   showKeyboard: boolean;

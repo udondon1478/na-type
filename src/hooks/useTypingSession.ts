@@ -6,7 +6,6 @@ import {
   validateCompositionInput,
 } from "@/lib/input-engine";
 import { resolveKeyToKana } from "@/lib/resolve-key-to-kana";
-import { resolveRomajiToKana, isRomajiPrefix } from "@/lib/romaji-resolver";
 import { createSessionResult } from "@/lib/stats-calculator";
 import { addSession, updateProgress } from "@/lib/storage";
 import type { SessionResult, InputMethod } from "@/types/stats";
@@ -34,6 +33,7 @@ interface UseTypingSessionOptions {
   exerciseId: string;
   targetText: string;
   onComplete?: (result: SessionResult) => void;
+  /** Phase 2（同時打鍵対応）で physical モードの chord 判定に使用予定 */
   inputMethod?: InputMethod;
 }
 
@@ -42,9 +42,7 @@ export function useTypingSession({
   exerciseId,
   targetText,
   onComplete,
-  inputMethod,
 }: UseTypingSessionOptions) {
-  const romajiTimeoutMs = inputMethod === "romaji" ? 500 : 30;
   const [state, setState] = useState<TypingSessionState>({
     status: "idle",
     targetText,
@@ -56,11 +54,6 @@ export function useTypingSession({
 
   const onCompleteRef = useRef(onComplete);
   const finishedRef = useRef(false);
-
-  // ローマ字蓄積バッファ（Karabiner経由のローマ字シーケンスを蓄積→かな変換）
-  // 例: Karabinerが "k","i" を連続送信 → バッファ "ki" → "き" に解決
-  const romajiBufferRef = useRef("");
-  const romajiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -109,62 +102,16 @@ export function useTypingSession({
         const expectedChar = prev.targetText[prev.currentPosition];
         let result = validateInput(inputChar, expectedChar);
 
-        // フォールバック1: 物理キーコードから薙刀式かなを逆引き
-        // karabiner/remappingモード向け。物理キー位置で薙刀式かなを判定する。
-        // （romajiモードでは物理jを「あ」と誤認するため無効化）
-        if (!result.correct && keyCode && inputMethod !== "romaji") {
+        // 物理キーコードから薙刀式かなを逆引き
+        // - karabiner/remapping: OS変換で直接かなが届くのが通常だが、変換が
+        //   来なかった場合の保険として機能する
+        // - physical: 物理キー位置で薙刀式を判定する主経路（例: J→あ）
+        // Phase1として単独打鍵（single）のみ対応。同時打鍵（shift/濁点/combo）は
+        // resolveKeyToKanaがsingleしか解決しないため未対応（#3で対応予定）。
+        if (!result.correct && keyCode) {
           const resolvedKana = resolveKeyToKana(keyCode);
           if (resolvedKana === expectedChar) {
             result = { correct: true, inputChar: resolvedKana, expectedChar };
-          }
-        }
-
-        // フォールバック2: ローマ字蓄積→かな変換
-        // romajiモード専用（リマッピングツールなし、アプリ内でローマ字→かな変換）
-        // 例: "k","i" を蓄積 → バッファ "ki" → "き"
-        // karabinerモードで有効にすると、生の'a'を「あ」と誤判定し物理キー位置判定を
-        // 上書きしてしまうため、romajiモードに限定する。
-        if (!result.correct && /^[a-z]$/.test(inputChar) && inputMethod === "romaji") {
-          romajiBufferRef.current += inputChar;
-
-          // 完全一致チェック
-          const resolvedKana = resolveRomajiToKana(romajiBufferRef.current);
-          if (resolvedKana) {
-            romajiBufferRef.current = "";
-            if (romajiTimerRef.current) {
-              clearTimeout(romajiTimerRef.current);
-              romajiTimerRef.current = null;
-            }
-            if (resolvedKana === expectedChar) {
-              result = { correct: true, inputChar: resolvedKana, expectedChar };
-            } else {
-              result = { correct: false, inputChar: resolvedKana, expectedChar };
-            }
-          } else if (isRomajiPrefix(romajiBufferRef.current)) {
-            // 有効なプレフィックス → 次の文字を待つ（状態変更なし）
-            // Karabinerは複数キーを数ms以内に送信するため、短いタイムアウトで十分
-            if (romajiTimerRef.current) {
-              clearTimeout(romajiTimerRef.current);
-            }
-            romajiTimerRef.current = setTimeout(() => {
-              romajiBufferRef.current = "";
-              romajiTimerRef.current = null;
-            }, romajiTimeoutMs);
-            return { ...prev, startTime, status };
-          } else {
-            // 無効なシーケンス → バッファクリア、ミスとして処理
-            romajiBufferRef.current = "";
-            if (romajiTimerRef.current) {
-              clearTimeout(romajiTimerRef.current);
-              romajiTimerRef.current = null;
-            }
-          }
-        } else {
-          // 非ローマ字入力時はバッファをクリア
-          romajiBufferRef.current = "";
-          if (romajiTimerRef.current) {
-            clearTimeout(romajiTimerRef.current);
-            romajiTimerRef.current = null;
           }
         }
 
@@ -201,7 +148,7 @@ export function useTypingSession({
         return newState;
       });
     },
-    [finishSession, inputMethod, romajiTimeoutMs]
+    [finishSession]
   );
 
   const processComposition = useCallback(
@@ -261,11 +208,6 @@ export function useTypingSession({
 
   const reset = useCallback(() => {
     finishedRef.current = false;
-    romajiBufferRef.current = "";
-    if (romajiTimerRef.current) {
-      clearTimeout(romajiTimerRef.current);
-      romajiTimerRef.current = null;
-    }
     setState({
       status: "idle",
       targetText,

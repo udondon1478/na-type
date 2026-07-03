@@ -32,10 +32,10 @@ const OPTIONS: InputMethodOption[] = [
       "DvorakJ・AutoHotKey等で薙刀式配列を構築済み。",
   },
   {
-    value: "romaji",
-    label: "リマッピングツールなし（全OS対応）",
+    value: "physical",
+    label: "リマッピングツールなしで練習（IME必ずオフ）",
     description:
-      "QWERTY配列でローマ字入力し、アプリ内でかなに変換して練習する。",
+      "変換ツール未導入でも、物理キーの位置で薙刀式を判定（例: Jキー→あ）。現時点は単独打鍵のかなのみ対応。同時打鍵（濁点・シフト等）は今後対応予定。",
   },
 ];
 
