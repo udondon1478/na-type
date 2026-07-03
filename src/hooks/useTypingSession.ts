@@ -6,9 +6,10 @@ import {
   validateCompositionInput,
 } from "@/lib/input-engine";
 import { resolveKeyToKana } from "@/lib/resolve-key-to-kana";
+import { resolveChordToKana } from "@/lib/resolve-chord-to-kana";
 import { createSessionResult } from "@/lib/stats-calculator";
 import { addSession, updateProgress } from "@/lib/storage";
-import type { SessionResult, InputMethod } from "@/types/stats";
+import type { SessionResult } from "@/types/stats";
 
 export type SessionStatus = "idle" | "active" | "completed";
 
@@ -33,8 +34,6 @@ interface UseTypingSessionOptions {
   exerciseId: string;
   targetText: string;
   onComplete?: (result: SessionResult) => void;
-  /** Phase 2（同時打鍵対応）で physical モードの chord 判定に使用予定 */
-  inputMethod?: InputMethod;
 }
 
 export function useTypingSession({
@@ -54,6 +53,12 @@ export function useTypingSession({
 
   const onCompleteRef = useRef(onComplete);
   const finishedRef = useRef(false);
+
+  // physical モードの同時打鍵（chord）判定用
+  // heldRef: 現在押下中の event.code 集合
+  // chordRef: 押下開始〜全解放までに押された event.code の和集合
+  const heldRef = useRef<Set<string>>(new Set());
+  const chordRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -102,12 +107,10 @@ export function useTypingSession({
         const expectedChar = prev.targetText[prev.currentPosition];
         let result = validateInput(inputChar, expectedChar);
 
-        // 物理キーコードから薙刀式かなを逆引き
-        // - karabiner/remapping: OS変換で直接かなが届くのが通常だが、変換が
-        //   来なかった場合の保険として機能する
-        // - physical: 物理キー位置で薙刀式を判定する主経路（例: J→あ）
-        // Phase1として単独打鍵（single）のみ対応。同時打鍵（shift/濁点/combo）は
-        // resolveKeyToKanaがsingleしか解決しないため未対応（#3で対応予定）。
+        // 物理キーコードから薙刀式かなを逆引き（karabiner/remapping 用の保険）。
+        // OS変換で直接かなが届くのが通常だが、変換が来なかった場合の単独打鍵フォールバック。
+        // physical モードは keydown/keyup ベースの chord 経路（processChordKeyDown/Up）で
+        // 判定するため、このパスは通らない。
         if (!result.correct && keyCode) {
           const resolvedKana = resolveKeyToKana(keyCode);
           if (resolvedKana === expectedChar) {
@@ -206,8 +209,90 @@ export function useTypingSession({
     [finishSession]
   );
 
+  // physical モード: キー押下 → chord に蓄積（keydown 時点では確定しない）
+  const processChordKeyDown = useCallback((code: string) => {
+    heldRef.current.add(code);
+    chordRef.current.add(code);
+  }, []);
+
+  // physical モード: キー解放 → held が空になった時点で chord を確定・判定
+  // （release ベース＝薙刀式の同時打鍵に自然に一致。押し順が前後しても和集合で判定）
+  const processChordKeyUp = useCallback(
+    (code: string) => {
+      heldRef.current.delete(code);
+      // まだ押下中のキーがあれば確定しない（プレフィックス誤発火を防ぐ）
+      if (heldRef.current.size > 0) return;
+      if (chordRef.current.size === 0) return;
+
+      const codes = [...chordRef.current];
+      chordRef.current = new Set();
+      const resolved = resolveChordToKana(codes);
+
+      setState((prev) => {
+        if (prev.status === "completed") return prev;
+        if (prev.currentPosition >= prev.targetText.length) return prev;
+
+        const now = performance.now();
+        const startTime = prev.startTime ?? now;
+        const status: SessionStatus =
+          prev.status === "idle" ? "active" : prev.status;
+
+        // 複数文字かな（じゃ・『』等）は kana.length 分だけ目標と照合・前進する
+        const expected = resolved
+          ? prev.targetText.slice(
+              prev.currentPosition,
+              prev.currentPosition + resolved.length
+            )
+          : prev.targetText[prev.currentPosition];
+        const correct = resolved !== null && resolved === expected;
+
+        const newResults = [...prev.results];
+        let newPosition = prev.currentPosition;
+        let newMissCount = prev.missCount;
+
+        if (correct) {
+          for (let i = 0; i < resolved.length; i++) {
+            newResults[newPosition] = {
+              char: prev.targetText[newPosition],
+              correct: true,
+              inputChar: resolved[i],
+            };
+            newPosition++;
+          }
+        } else {
+          newResults[newPosition] = {
+            char: prev.targetText[newPosition],
+            correct: false,
+            inputChar: resolved ?? "",
+          };
+          newMissCount++;
+        }
+
+        const isComplete = newPosition >= prev.targetText.length;
+
+        const newState: TypingSessionState = {
+          ...prev,
+          status: isComplete ? "completed" : status,
+          currentPosition: newPosition,
+          results: newResults,
+          missCount: newMissCount,
+          startTime,
+        };
+
+        if (isComplete) {
+          setTimeout(() => finishSession(newState), 0);
+        }
+
+        return newState;
+      });
+    },
+    [finishSession]
+  );
+
   const reset = useCallback(() => {
     finishedRef.current = false;
+    heldRef.current = new Set();
+    chordRef.current = new Set();
     setState({
       status: "idle",
       targetText,
@@ -222,6 +307,8 @@ export function useTypingSession({
     ...state,
     processInput,
     processComposition,
+    processChordKeyDown,
+    processChordKeyUp,
     reset,
   };
 }

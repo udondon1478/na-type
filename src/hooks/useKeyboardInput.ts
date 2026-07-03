@@ -33,6 +33,8 @@ export interface KeyEvent {
 interface UseKeyboardInputOptions {
   /** キー入力コールバック */
   onKeyDown?: (event: KeyEvent) => void;
+  /** キー解放コールバック（physicalモードの同時打鍵確定に使用） */
+  onKeyUp?: (code: string) => void;
   /** IME確定時コールバック */
   onCompositionEnd?: (text: string) => void;
   /** 有効/無効 */
@@ -41,10 +43,12 @@ interface UseKeyboardInputOptions {
 
 export function useKeyboardInput({
   onKeyDown,
+  onKeyUp,
   onCompositionEnd,
   enabled = true,
 }: UseKeyboardInputOptions) {
   const onKeyDownRef = useRef(onKeyDown);
+  const onKeyUpRef = useRef(onKeyUp);
   const onCompositionEndRef = useRef(onCompositionEnd);
 
   // IME composition状態の手動追跡
@@ -54,6 +58,10 @@ export function useKeyboardInput({
   useEffect(() => {
     onKeyDownRef.current = onKeyDown;
   }, [onKeyDown]);
+
+  useEffect(() => {
+    onKeyUpRef.current = onKeyUp;
+  }, [onKeyUp]);
 
   useEffect(() => {
     onCompositionEndRef.current = onCompositionEnd;
@@ -93,6 +101,13 @@ export function useKeyboardInput({
     },
     []
   );
+
+  const handleKeyUp = useCallback((e: KeyboardEvent) => {
+    // 同時打鍵の確定は押下中の全キーが解放された時点で行う。
+    // モディファイア単体の解放は無視（Shift/Ctrl等）。
+    if (["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) return;
+    onKeyUpRef.current?.(e.code);
+  }, []);
 
   const handleCompositionStart = useCallback(() => {
     isComposingRef.current = true;
@@ -135,6 +150,7 @@ export function useKeyboardInput({
     const el = inputRef.current;
 
     document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
 
     if (el) {
       // 隠しテキストエリアがある場合、そこでcompositionイベントをキャプチャ
@@ -150,6 +166,7 @@ export function useKeyboardInput({
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keyup", handleKeyUp);
       if (el) {
         el.removeEventListener("compositionstart", handleCompositionStart);
         el.removeEventListener("compositionend", handleCompositionEnd);
@@ -159,7 +176,7 @@ export function useKeyboardInput({
         document.removeEventListener("compositionend", handleCompositionEnd);
       }
     };
-  }, [enabled, handleKeyDown, handleCompositionStart, handleCompositionEnd, handleBlur]);
+  }, [enabled, handleKeyDown, handleKeyUp, handleCompositionStart, handleCompositionEnd, handleBlur]);
 
   return { inputRef };
 }

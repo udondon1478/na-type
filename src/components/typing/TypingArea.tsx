@@ -48,12 +48,21 @@ export function TypingArea({
     exerciseId,
     targetText,
     onComplete,
-    inputMethod,
   });
+
+  // physical モードは物理キー位置で薙刀式を判定する。単独打鍵に加え、濁点・シフト・
+  // combo 等の同時打鍵を release ベースで確定するため、keydown で蓄積し keyup で判定する。
+  const isPhysical = inputMethod === "physical";
 
   const handleKeyDown = useCallback(
     (event: { key: string; code: string; wasProcessKey?: boolean }) => {
       if (session.status === "completed") return;
+
+      // physical モード: 物理キーを chord に蓄積（key/code の内容には依存しない）
+      if (isPhysical) {
+        session.processChordKeyDown(event.code);
+        return;
+      }
 
       // IME "Process" キー検出 → 連続3回で警告表示
       if (event.wasProcessKey) {
@@ -74,7 +83,15 @@ export function TypingArea({
 
       session.processInput(event.key, event.code);
     },
-    [session, showImeWarning]
+    [session, showImeWarning, isPhysical]
+  );
+
+  const handleKeyUp = useCallback(
+    (code: string) => {
+      if (!isPhysical || session.status === "completed") return;
+      session.processChordKeyUp(code);
+    },
+    [session, isPhysical]
   );
 
   const handleCompositionEnd = useCallback(
@@ -87,6 +104,7 @@ export function TypingArea({
 
   const { inputRef } = useKeyboardInput({
     onKeyDown: handleKeyDown,
+    onKeyUp: handleKeyUp,
     onCompositionEnd: handleCompositionEnd,
     enabled: session.status !== "completed",
   });

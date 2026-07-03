@@ -88,8 +88,9 @@ src/
 | `src/data/naginata/layout.ts` | 薙刀式配列データ（323マッピング） | **自動生成**。手動編集禁止。`npx tsx scripts/parse-karabiner.ts` で再生成 |
 | `scripts/parse-karabiner.ts` | Karabiner JSON → 配列データ変換 | 入力: `~/.config/karabiner/karabiner.json` |
 | `src/hooks/useTypingSession.ts` | タイピングセッション状態機械 | idle→active→completed の状態遷移 |
-| `src/hooks/useKeyboardInput.ts` | キーボードイベント取得 | IME compositionend にも対応 |
+| `src/hooks/useKeyboardInput.ts` | キーボードイベント取得 | IME compositionend／physicalモードの keyup にも対応 |
 | `src/lib/kana-to-keys.ts` | かな→物理キー逆引き | 最もシンプルな入力方法を優先 |
+| `src/lib/resolve-chord-to-kana.ts` | 物理キー集合→かな逆引き（全inputType） | physicalモードの同時打鍵判定。非かな・機能エントリは除外 |
 
 ## 薙刀式の入力タイプ
 
