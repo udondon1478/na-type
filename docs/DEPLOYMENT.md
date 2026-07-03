@@ -49,7 +49,7 @@ npx wrangler pages deploy out --project-name=<プロジェクト名>
 
 ## SPA ルーティングについて
 
-静的エクスポートは各ルートを実ファイル（`out/naginata/index.html` など）として書き出すため、通常は追加のリライト設定は不要です。動的ルート `naginata/lesson/[id]` は `generateStaticParams()` が返す ID 分だけ事前生成されます。
+静的エクスポートは各ルートを実ファイルとして書き出すため、通常は追加のリライト設定は不要です。本プロジェクトは `trailingSlash` を指定していない（デフォルト `false`）ので、`/naginata` は `out/naginata.html` として出力されます（`out/naginata/index.html` になるのは `trailingSlash: true` の場合）。動的ルート `naginata/lesson/[id]` は `generateStaticParams()` が返す ID 分だけ `out/naginata/lesson/1.html` … のように事前生成されます。
 
 未定義パスのフォールバックを調整したい場合は `public/_redirects` / `public/_headers`（Cloudflare Pages 形式）を追加すると `out/` にコピーされます。
 
