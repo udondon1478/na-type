@@ -305,31 +305,45 @@ export function useTypingSession({
     [finishSession]
   );
 
-  // physical モード: キー押下 → 時間窓で同時打鍵をクラスタリング
+  const startChord = useCallback((code: string, timestamp: number) => {
+    chordRef.current = new Set([code]);
+    chordStartRef.current = timestamp;
+    flushTimerRef.current = setTimeout(commitChord, CHORD_WINDOW_MS);
+  }, [commitChord]);
+
+  // physical モード: キー押下 → 「時間窓 かつ オーバーラップ」で同時打鍵をクラスタリング
   const processChordKeyDown = useCallback(
     (code: string, timestamp: number) => {
       // オートリピート由来の重複keydownは無視
       if (pressedRef.current.has(code)) return;
-      pressedRef.current.add(code);
 
       const start = chordStartRef.current;
       if (start === null) {
-        // 新しい塊を開始し、窓が閉じる時刻に確定を予約
-        chordRef.current = new Set([code]);
-        chordStartRef.current = timestamp;
-        flushTimerRef.current = setTimeout(commitChord, CHORD_WINDOW_MS);
-      } else if (timestamp - start <= CHORD_WINDOW_MS) {
-        // 窓の内側 → 同一同時打鍵に追加（確定時刻は最初の押下基準のまま）
+        pressedRef.current.add(code);
+        startChord(code, timestamp);
+        return;
+      }
+
+      // 同時打鍵とみなす条件（Karabiner の絶対時間窓 + やまぶき/薙刀式のオーバーラップ）:
+      //   1. 最初の押下から CHORD_WINDOW_MS 以内（連続打鍵＝ロールオーバーを弾く）
+      //   2. 直前の塊のキーがまだ物理的に押されている（＝重なっている。全部離した後の
+      //      「離して押し直し」は、たとえ窓内でも連続打鍵として分離する）
+      const withinWindow = timestamp - start <= CHORD_WINDOW_MS;
+      const overlapping = [...chordRef.current].some((k) =>
+        pressedRef.current.has(k)
+      );
+      pressedRef.current.add(code);
+
+      if (withinWindow && overlapping) {
+        // 同一同時打鍵に追加（確定時刻は最初の押下基準のまま）
         chordRef.current.add(code);
       } else {
-        // 窓の外側 → 別打鍵。現在の塊を即確定してから新しい塊を開始
+        // 別打鍵 → 現在の塊を即確定してから新しい塊を開始
         commitChord();
-        chordRef.current = new Set([code]);
-        chordStartRef.current = timestamp;
-        flushTimerRef.current = setTimeout(commitChord, CHORD_WINDOW_MS);
+        startChord(code, timestamp);
       }
     },
-    [commitChord]
+    [commitChord, startChord]
   );
 
   // physical モード: キー解放 → 押下集合の追跡のみ（確定は時間窓が担う）
