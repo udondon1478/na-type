@@ -55,12 +55,12 @@ export function TypingArea({
   const isPhysical = inputMethod === "physical";
 
   const handleKeyDown = useCallback(
-    (event: { key: string; code: string; timestamp: number; wasProcessKey?: boolean }) => {
+    (event: { key: string; code: string; wasProcessKey?: boolean }) => {
       if (session.status === "completed") return;
 
-      // physical モード: 物理キーを時間窓でクラスタリング（key の内容には依存しない）
+      // physical モード: 物理キーを目標かなと照合（key の内容には依存しない）
       if (isPhysical) {
-        session.processChordKeyDown(event.code, event.timestamp);
+        session.processChordKeyDown(event.code);
         return;
       }
 

@@ -6,7 +6,7 @@ import {
   validateCompositionInput,
 } from "@/lib/input-engine";
 import { resolveKeyToKana } from "@/lib/resolve-key-to-kana";
-import { resolveChordToKana } from "@/lib/resolve-chord-to-kana";
+import { resolveChordToKana, matchChordToTarget } from "@/lib/resolve-chord-to-kana";
 import { createSessionResult } from "@/lib/stats-calculator";
 import { addSession, updateProgress } from "@/lib/storage";
 import type { SessionResult } from "@/types/stats";
@@ -14,15 +14,13 @@ import type { SessionResult } from "@/types/stats";
 export type SessionStatus = "idle" | "active" | "completed";
 
 /**
- * physical モードで「同時打鍵」とみなす押下の時間窓（ミリ秒）。
- * 最初のキー押下からこの時間内に押されたキーだけを1つの同時打鍵として扱う。
+ * physical モードの同時打鍵確定を保留する時間（ミリ秒）。
  *
- * 人間の「同時押し」は指の着地が数十msばらつくため、狭すぎると意図的な同時打鍵を
- * 取りこぼす。一方 physical モードはツール導入前のお試し（≒初心者・連続打鍵の間隔は
- * 広い）用途なので、やや広めにしても連続打鍵との誤結合は起きにくい。
- * 60ms は連続打鍵（通常 150〜300ms/文字、速い人でも ≈100ms）とは十分に分離できる。
+ * 目標かなに一致してもより長いかな（例: じ → じゃ）に伸びうる場合のみ、この時間だけ
+ * 後続キーを待ってから確定する。通常の一致（伸びる余地なし）は即確定するので、この値は
+ * 複数文字かな（combo）のときだけ効く。押下タイミングの判定には使わない。
  */
-const CHORD_WINDOW_MS = 60;
+const CHORD_SETTLE_MS = 50;
 
 interface CharResult {
   char: string;
@@ -65,17 +63,21 @@ export function useTypingSession({
   const onCompleteRef = useRef(onComplete);
   const finishedRef = useRef(false);
 
-  // physical モードの同時打鍵（chord）判定用（時間窓ベース）
-  // 最初のキー押下から CHORD_WINDOW_MS 以内に押されたキーを1つの同時打鍵とみなす。
-  // 窓が閉じた時点（またはそれより後の押下が来た時点）で塊を確定する。
-  // - pressedRef: 現在物理的に押下中の集合（オートリピートの重複keydown除去用）
-  // - chordRef:   形成中の塊（同一同時打鍵とみなすキー集合）
-  // - chordStartRef: 塊の最初のキーが押された時刻（performance.now）
-  // - flushTimerRef: 窓が閉じた時点で確定するためのタイマー
+  // physical モードの同時打鍵（chord）判定用（目標かなベース）
+  // 「次に打つべきかな」が既知なので、押下中のキー集合が目標かなのキー集合に一致した
+  // 時点で確定する。押下タイミングには依存せず、正しいキーさえ押せば発動する。
+  // - pressedRef:  現在物理的に押下中の集合（オートリピート除去・オーバーラップ判定用）
+  // - clusterRef:  未確定の現在の試行に含まれるキー集合（確定済みキーは除く）
+  // - consumedRef: 確定済みだがまだ物理的に押されているキー（次の試行で二重計上しない）
+  // - pendingKanaRef: 一致したが「より長いかな」に伸びうるため確定保留中のかな
+  // - settleTimerRef: 保留中のかなを確定するタイマー
+  // - posRef:      physical モードでの権威的な現在位置（setState の非同期化を回避）
   const pressedRef = useRef<Set<string>>(new Set());
-  const chordRef = useRef<Set<string>>(new Set());
-  const chordStartRef = useRef<number | null>(null);
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clusterRef = useRef<Set<string>>(new Set());
+  const consumedRef = useRef<Set<string>>(new Set());
+  const pendingKanaRef = useRef<string | null>(null);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const posRef = useRef(0);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -226,140 +228,149 @@ export function useTypingSession({
     [finishSession]
   );
 
-  // physical モード: キー押下 → chord に蓄積（keydown 時点では確定しない）
-  // 形成中の塊を確定して目標かなと照合する（時間窓の満了・別打鍵の割込み時に呼ばれる）
-  const commitChord = useCallback(
-    () => {
-      if (flushTimerRef.current !== null) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
-      if (chordRef.current.size === 0) {
-        chordStartRef.current = null;
-        return;
-      }
+  const clearSettleTimer = useCallback(() => {
+    if (settleTimerRef.current !== null) {
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+    pendingKanaRef.current = null;
+  }, []);
 
-      const codes = [...chordRef.current];
-      chordRef.current = new Set();
-      chordStartRef.current = null;
-      const resolved = resolveChordToKana(codes);
+  // 一致したかなを正解として確定し、kana.length 分だけ前進する
+  const commitCorrect = useCallback(
+    (kana: string) => {
+      clearSettleTimer();
+      // 確定に使ったキーがまだ物理的に押されていれば「消費済み」に移し、次の試行で
+      // 二重計上しない（例: ど 確定後も J/D を押しっぱなしのまま次へ）
+      for (const k of clusterRef.current) {
+        if (pressedRef.current.has(k)) consumedRef.current.add(k);
+      }
+      clusterRef.current = new Set();
+
+      const startPos = posRef.current;
+      const newPos = startPos + kana.length;
+      posRef.current = newPos;
 
       setState((prev) => {
         if (prev.status === "completed") return prev;
-        if (prev.currentPosition >= prev.targetText.length) return prev;
-
         const now = performance.now();
         const startTime = prev.startTime ?? now;
-        const status: SessionStatus =
-          prev.status === "idle" ? "active" : prev.status;
-
-        // 複数文字かな（じゃ・『』等）は kana.length 分だけ目標と照合・前進する
-        const expected = resolved
-          ? prev.targetText.slice(
-              prev.currentPosition,
-              prev.currentPosition + resolved.length
-            )
-          : prev.targetText[prev.currentPosition];
-        const correct = resolved !== null && resolved === expected;
-
         const newResults = [...prev.results];
-        let newPosition = prev.currentPosition;
-        let newMissCount = prev.missCount;
-
-        if (correct) {
-          for (let i = 0; i < resolved.length; i++) {
-            newResults[newPosition] = {
-              char: prev.targetText[newPosition],
-              correct: true,
-              inputChar: resolved[i],
-            };
-            newPosition++;
-          }
-        } else {
-          newResults[newPosition] = {
-            char: prev.targetText[newPosition],
-            correct: false,
-            inputChar: resolved ?? "",
+        for (let i = 0; i < kana.length; i++) {
+          newResults[startPos + i] = {
+            char: prev.targetText[startPos + i],
+            correct: true,
+            inputChar: kana[i],
           };
-          newMissCount++;
         }
-
-        const isComplete = newPosition >= prev.targetText.length;
-
+        const isComplete = newPos >= prev.targetText.length;
         const newState: TypingSessionState = {
           ...prev,
-          status: isComplete ? "completed" : status,
-          currentPosition: newPosition,
+          status: isComplete ? "completed" : "active",
+          currentPosition: newPos,
           results: newResults,
-          missCount: newMissCount,
           startTime,
         };
-
         if (isComplete) {
           setTimeout(() => finishSession(newState), 0);
         }
-
         return newState;
       });
     },
-    [finishSession]
+    [finishSession, clearSettleTimer]
   );
 
-  const startChord = useCallback((code: string, timestamp: number) => {
-    chordRef.current = new Set([code]);
-    chordStartRef.current = timestamp;
-    flushTimerRef.current = setTimeout(commitChord, CHORD_WINDOW_MS);
-  }, [commitChord]);
+  // 現在位置をミスとして記録する（前進しない）
+  const commitMiss = useCallback(() => {
+    const resolved = resolveChordToKana([...clusterRef.current]);
+    clearSettleTimer();
+    clusterRef.current = new Set();
+    const pos = posRef.current;
 
-  // physical モード: キー押下 → 「時間窓 かつ オーバーラップ」で同時打鍵をクラスタリング
+    setState((prev) => {
+      if (prev.status === "completed") return prev;
+      if (pos >= prev.targetText.length) return prev;
+      const now = performance.now();
+      const startTime = prev.startTime ?? now;
+      const newResults = [...prev.results];
+      newResults[pos] = {
+        char: prev.targetText[pos],
+        correct: false,
+        inputChar: resolved ?? "",
+      };
+      return {
+        ...prev,
+        status: "active",
+        currentPosition: pos,
+        results: newResults,
+        missCount: prev.missCount + 1,
+        startTime,
+      };
+    });
+  }, [clearSettleTimer]);
+
+  // 現在のクラスタを目標かなと照合し、確定・保留・待機を決める
+  const evaluateCluster = useCallback(() => {
+    const tail = targetText.slice(posRef.current);
+    if (tail.length === 0) return;
+
+    const { kana, canExtend } = matchChordToTarget([...clusterRef.current], tail);
+    clearSettleTimer();
+
+    if (kana && !canExtend) {
+      // 目標に一致し、これ以上伸びる余地なし → 即確定
+      commitCorrect(kana);
+    } else if (kana && canExtend) {
+      // 一致したが、より長いかな（例: じ→じゃ）になりうる → 少し待って後続キーを見る
+      pendingKanaRef.current = kana;
+      settleTimerRef.current = setTimeout(() => {
+        const k = pendingKanaRef.current;
+        if (k !== null) commitCorrect(k);
+      }, CHORD_SETTLE_MS);
+    }
+    // 未一致（kana === null）は、後続キー or 全キー解放（＝ミス確定）を待つ
+  }, [targetText, clearSettleTimer, commitCorrect]);
+
+  // physical モード: キー押下 → クラスタに追加して目標照合
   const processChordKeyDown = useCallback(
-    (code: string, timestamp: number) => {
-      // オートリピート由来の重複keydownは無視
+    (code: string) => {
+      // オートリピート由来／確定後も押下中のキーの重複keydownは無視
       if (pressedRef.current.has(code)) return;
+      pressedRef.current.add(code);
+      clusterRef.current.add(code);
+      evaluateCluster();
+    },
+    [evaluateCluster]
+  );
 
-      const start = chordStartRef.current;
-      if (start === null) {
-        pressedRef.current.add(code);
-        startChord(code, timestamp);
-        return;
-      }
-
-      // 同時打鍵とみなす条件（Karabiner の絶対時間窓 + やまぶき/薙刀式のオーバーラップ）:
-      //   1. 最初の押下から CHORD_WINDOW_MS 以内（連続打鍵＝ロールオーバーを弾く）
-      //   2. 直前の塊のキーがまだ物理的に押されている（＝重なっている。全部離した後の
-      //      「離して押し直し」は、たとえ窓内でも連続打鍵として分離する）
-      const withinWindow = timestamp - start <= CHORD_WINDOW_MS;
-      const overlapping = [...chordRef.current].some((k) =>
+  // physical モード: キー解放 → 未確定クラスタが全解放されたら確定/ミスを判定
+  const processChordKeyUp = useCallback(
+    (code: string) => {
+      pressedRef.current.delete(code);
+      consumedRef.current.delete(code);
+      if (!clusterRef.current.has(code)) return; // 確定済み/無関係キーの解放
+      // まだ押下中の未確定キーが残っていれば、組み立て継続中
+      const anyHeld = [...clusterRef.current].some((k) =>
         pressedRef.current.has(k)
       );
-      pressedRef.current.add(code);
-
-      if (withinWindow && overlapping) {
-        // 同一同時打鍵に追加（確定時刻は最初の押下基準のまま）
-        chordRef.current.add(code);
+      if (anyHeld) return;
+      // 未確定クラスタが全解放された → 保留中の一致があれば確定、なければミス
+      if (pendingKanaRef.current !== null) {
+        commitCorrect(pendingKanaRef.current);
       } else {
-        // 別打鍵 → 現在の塊を即確定してから新しい塊を開始
-        commitChord();
-        startChord(code, timestamp);
+        commitMiss();
       }
     },
-    [commitChord, startChord]
+    [commitCorrect, commitMiss]
   );
 
-  // physical モード: キー解放 → 押下集合の追跡のみ（確定は時間窓が担う）
-  const processChordKeyUp = useCallback((code: string) => {
-    pressedRef.current.delete(code);
-  }, []);
-
   const clearChord = useCallback(() => {
-    if (flushTimerRef.current !== null) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
+    clearSettleTimer();
     pressedRef.current = new Set();
-    chordRef.current = new Set();
-    chordStartRef.current = null;
-  }, []);
+    clusterRef.current = new Set();
+    consumedRef.current = new Set();
+    posRef.current = 0;
+  }, [clearSettleTimer]);
 
   const reset = useCallback(() => {
     finishedRef.current = false;

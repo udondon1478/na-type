@@ -61,6 +61,8 @@ function chordKey(codes: string[]): string {
 
 // 索引キー → かな のマップを優先度順に構築（first-wins）
 const chordToKana = new Map<string, string>();
+// 全エントリ（キー集合 → かな）。目標照合の「拡張可能性」判定に使う。
+const entries: { keySet: Set<string>; kana: string }[] = [];
 
 const sorted = [...naginataMappings].sort((a, b) => {
   const pa = PRIORITY[a.inputType] ?? 99;
@@ -76,6 +78,7 @@ for (const m of sorted) {
   const key = chordKey(codes);
   if (!chordToKana.has(key)) {
     chordToKana.set(key, m.kana);
+    entries.push({ keySet: new Set(codes), kana: m.kana });
   }
 }
 
@@ -87,4 +90,51 @@ for (const m of sorted) {
 export function resolveChordToKana(codes: string[]): string | null {
   if (codes.length === 0) return null;
   return chordToKana.get(chordKey(codes)) ?? null;
+}
+
+/** a が b の（同集合含む）部分集合か */
+function isSubset(a: Set<string>, b: Set<string>): boolean {
+  if (a.size > b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+export interface ChordTargetMatch {
+  /** クラスタが目標かな（現在位置から）に一致した場合のかな。なければ null */
+  kana: string | null;
+  /**
+   * クラスタにさらにキーを足せば、目標に一致する（より長い）かなになりうるか。
+   * true の間は確定を保留し、後続キーを待つ（例: じ の途中で じゃ になりうる）。
+   */
+  canExtend: boolean;
+}
+
+/**
+ * 現在押されているキー集合（cluster）を、目標テキストの現在位置以降（targetTail）と照合する。
+ *
+ * 練習アプリでは「次に打つべきかな」が既知なので、cluster がその位置のかなに一致した
+ * 時点で確定できる。これによりタイミングに依存せず、かつ プレフィックス問題
+ * （あ=J が ど=J+D の部分集合）も目標側で一意に解決される。
+ */
+export function matchChordToTarget(
+  clusterKeys: string[],
+  targetTail: string
+): ChordTargetMatch {
+  const cluster = new Set(clusterKeys);
+  const exact = resolveChordToKana(clusterKeys);
+  const kana = exact && targetTail.startsWith(exact) ? exact : null;
+
+  // cluster の真部分集合（＝さらにキーを足せる）で、目標に一致するより長いかなが
+  // 存在するか。存在すれば確定を保留して後続キーを待つ。
+  let canExtend = false;
+  for (const e of entries) {
+    if (e.keySet.size <= cluster.size) continue; // 真の上位集合のみ
+    if (!isSubset(cluster, e.keySet)) continue;
+    if (targetTail.startsWith(e.kana)) {
+      canExtend = true;
+      break;
+    }
+  }
+
+  return { kana, canExtend };
 }
