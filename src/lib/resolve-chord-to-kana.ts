@@ -44,7 +44,17 @@ function toEventCodes(keys: string[], inputType: InputType): string[] | null {
   const codes: string[] = [];
   for (const k of keys) {
     const code = KARABINER_TO_EVENT_CODE[k];
-    if (!code) return null;
+    if (!code) {
+      // マッピング欠落時は静かに除外されると、naginataMappings 追加/変更への
+      // KARABINER_TO_EVENT_CODE 追従漏れに気づけない。開発時のみ可視化する。
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[resolve-chord-to-kana] KARABINER_TO_EVENT_CODE に未対応のキー "${k}" ` +
+            `(inputType: ${inputType})。このマッピングは chord 判定から除外されます。`
+        );
+      }
+      return null;
+    }
     codes.push(code);
   }
   // shifted は keys に spacebar を含まないため、Space を集合に補う（例: む = {Space, KeyW}）

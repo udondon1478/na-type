@@ -14,13 +14,19 @@ import type { SessionResult } from "@/types/stats";
 export type SessionStatus = "idle" | "active" | "completed";
 
 /**
- * physical モードの同時打鍵確定を保留する時間（ミリ秒）。
+ * physical モードの同時打鍵確定を保留する時間（ミリ秒）のデフォルト値。
  *
  * 目標かなに一致してもより長いかな（例: じ → じゃ）に伸びうる場合のみ、この時間だけ
  * 後続キーを待ってから確定する。通常の一致（伸びる余地なし）は即確定するので、この値は
  * 複数文字かな（combo）のときだけ効く。押下タイミングの判定には使わない。
+ *
+ * この値はトレードオフを持つ:
+ * - 短すぎる → ゆっくり意図的に押す combo（じゃ 等）が じ で先に確定して分割される。
+ * - 長すぎる → 前のかなを押しっぱなしのまま次のかなへローリング入力する際、次のかなの
+ *   確定が遅延する（保留中は前のかな確定を待つため）。
+ * 環境やユーザーの打鍵速度で最適値が変わるため `chordSettleMs` オプションで上書き可能にする。
  */
-const CHORD_SETTLE_MS = 50;
+const DEFAULT_CHORD_SETTLE_MS = 50;
 
 interface CharResult {
   char: string;
@@ -43,6 +49,11 @@ interface UseTypingSessionOptions {
   exerciseId: string;
   targetText: string;
   onComplete?: (result: SessionResult) => void;
+  /**
+   * physical モードで「より長いかなに伸びうる」一致を確定保留する時間（ミリ秒）。
+   * 省略時は {@link DEFAULT_CHORD_SETTLE_MS}。打鍵速度に合わせて調整可能。
+   */
+  chordSettleMs?: number;
 }
 
 export function useTypingSession({
@@ -50,6 +61,7 @@ export function useTypingSession({
   exerciseId,
   targetText,
   onComplete,
+  chordSettleMs = DEFAULT_CHORD_SETTLE_MS,
 }: UseTypingSessionOptions) {
   const [state, setState] = useState<TypingSessionState>({
     status: "idle",
@@ -68,13 +80,11 @@ export function useTypingSession({
   // 時点で確定する。押下タイミングには依存せず、正しいキーさえ押せば発動する。
   // - pressedRef:  現在物理的に押下中の集合（オートリピート除去・オーバーラップ判定用）
   // - clusterRef:  未確定の現在の試行に含まれるキー集合（確定済みキーは除く）
-  // - consumedRef: 確定済みだがまだ物理的に押されているキー（次の試行で二重計上しない）
   // - pendingKanaRef: 一致したが「より長いかな」に伸びうるため確定保留中のかな
   // - settleTimerRef: 保留中のかなを確定するタイマー
   // - posRef:      physical モードでの権威的な現在位置（setState の非同期化を回避）
   const pressedRef = useRef<Set<string>>(new Set());
   const clusterRef = useRef<Set<string>>(new Set());
-  const consumedRef = useRef<Set<string>>(new Set());
   const pendingKanaRef = useRef<string | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const posRef = useRef(0);
@@ -240,11 +250,8 @@ export function useTypingSession({
   const commitCorrect = useCallback(
     (kana: string) => {
       clearSettleTimer();
-      // 確定に使ったキーがまだ物理的に押されていれば「消費済み」に移し、次の試行で
-      // 二重計上しない（例: ど 確定後も J/D を押しっぱなしのまま次へ）
-      for (const k of clusterRef.current) {
-        if (pressedRef.current.has(k)) consumedRef.current.add(k);
-      }
+      // 未確定クラスタをリセット。確定に使ったキーがまだ押下中でも、clusterRef から
+      // 外れるため次の試行に混入しない（keyUp 側も clusterRef.has(code) で無関係扱い）。
       clusterRef.current = new Set();
 
       const startPos = posRef.current;
@@ -326,10 +333,10 @@ export function useTypingSession({
       settleTimerRef.current = setTimeout(() => {
         const k = pendingKanaRef.current;
         if (k !== null) commitCorrect(k);
-      }, CHORD_SETTLE_MS);
+      }, chordSettleMs);
     }
     // 未一致（kana === null）は、後続キー or 全キー解放（＝ミス確定）を待つ
-  }, [targetText, clearSettleTimer, commitCorrect]);
+  }, [targetText, clearSettleTimer, commitCorrect, chordSettleMs]);
 
   // physical モード: キー押下 → クラスタに追加して目標照合
   const processChordKeyDown = useCallback(
@@ -347,7 +354,6 @@ export function useTypingSession({
   const processChordKeyUp = useCallback(
     (code: string) => {
       pressedRef.current.delete(code);
-      consumedRef.current.delete(code);
       if (!clusterRef.current.has(code)) return; // 確定済み/無関係キーの解放
       // まだ押下中の未確定キーが残っていれば、組み立て継続中
       const anyHeld = [...clusterRef.current].some((k) =>
@@ -368,7 +374,6 @@ export function useTypingSession({
     clearSettleTimer();
     pressedRef.current = new Set();
     clusterRef.current = new Set();
-    consumedRef.current = new Set();
     posRef.current = 0;
   }, [clearSettleTimer]);
 
