@@ -86,7 +86,8 @@ export function KotodamaGame() {
             game.handleChordKeyDown(event.code);
             return;
           }
-          if (event.key.length === 1) {
+          // Space は開始キーの指残りで叩かれがちで、かなにも該当しないため無視する
+          if (event.key.length === 1 && event.key !== " ") {
             game.handleKanaInput(event.key, event.code);
           }
           return;

@@ -1,4 +1,4 @@
-import type { UpgradeDef, UpgradeId } from "@/types/game";
+import type { UpgradeDef, UpgradeId, UpgradeStacks } from "@/types/game";
 
 /**
  * 言霊ディフェンスの強化（レリック）定義
@@ -66,7 +66,7 @@ export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
 
 /** 取得済みスタックを考慮して、提示可能な強化から count 個をランダムに選ぶ */
 export function rollUpgradeOptions(
-  stacks: Partial<Record<UpgradeId, number>>,
+  stacks: UpgradeStacks,
   count: number
 ): UpgradeId[] {
   const available = (Object.values(UPGRADE_DEFS) as UpgradeDef[])
@@ -87,33 +87,33 @@ export function rollUpgradeOptions(
 /** スタック数から実効値を導出するヘルパー群 */
 export const effects = {
   /** 敵速度に掛ける係数（縮地） */
-  slowFactor(stacks: Partial<Record<UpgradeId, number>>): number {
+  slowFactor(stacks: UpgradeStacks): number {
     return Math.pow(0.88, stacks.shukuchi ?? 0);
   },
   /** コンボ1あたりのスコア倍率増分（連撃の心得） */
-  comboRate(stacks: Partial<Record<UpgradeId, number>>): number {
+  comboRate(stacks: UpgradeStacks): number {
     return 0.05 * (1 + 0.5 * (stacks.renkeki ?? 0));
   },
   /** ノーミス撃破時の敵停止時間（時詠み）。0なら発動しない */
-  freezeMs(stacks: Partial<Record<UpgradeId, number>>): number {
+  freezeMs(stacks: UpgradeStacks): number {
     const n = stacks.tokiyomi ?? 0;
     return n === 0 ? 0 : 800 + 400 * (n - 1);
   },
   /** 言霊爆ぜの発動に必要な連続正解数。null なら未取得 */
-  bombThreshold(stacks: Partial<Record<UpgradeId, number>>): number | null {
+  bombThreshold(stacks: UpgradeStacks): number | null {
     const n = stacks.kotodama ?? 0;
     return n === 0 ? null : Math.max(20 - 4 * n, 8);
   },
   /** ウェーブ開始時のHP回復量（浄化の風） */
-  waveHeal(stacks: Partial<Record<UpgradeId, number>>): number {
+  waveHeal(stacks: UpgradeStacks): number {
     return stacks.jouka ?? 0;
   },
   /** ウェーブごとの結界チャージ数（結界強化） */
-  shieldCharges(stacks: Partial<Record<UpgradeId, number>>): number {
+  shieldCharges(stacks: UpgradeStacks): number {
     return stacks.kekkai ?? 0;
   },
   /** 見切りを取得しているか */
-  hasMikiri(stacks: Partial<Record<UpgradeId, number>>): boolean {
+  hasMikiri(stacks: UpgradeStacks): boolean {
     return (stacks.mikiri ?? 0) > 0;
   },
 };

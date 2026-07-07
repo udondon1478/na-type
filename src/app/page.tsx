@@ -61,7 +61,7 @@ export default function Dashboard() {
 
       <StatsOverview />
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Link href="/naginata">
           <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
             <CardHeader>

@@ -14,7 +14,13 @@ import {
 import { effects, rollUpgradeOptions } from "@/lib/game/upgrades";
 import { resolveKeyToKana } from "@/lib/resolve-key-to-kana";
 import { updateGameRecord } from "@/lib/storage";
-import type { Enemy, GamePhase, GameSnapshot, UpgradeId } from "@/types/game";
+import type {
+  Enemy,
+  GamePhase,
+  GameSnapshot,
+  UpgradeId,
+  UpgradeStacks,
+} from "@/types/game";
 
 /**
  * physical モードの同時打鍵確定を保留する時間（ミリ秒）。
@@ -43,7 +49,7 @@ interface Sim {
   enemies: Enemy[];
   lockedId: number | null;
   upgradeOptions: UpgradeId[];
-  stacks: Partial<Record<UpgradeId, number>>;
+  stacks: UpgradeStacks;
   shieldCharges: number;
   /** performance.now() 基準。これ未満の間は敵が停止 */
   freezeUntil: number;
@@ -237,6 +243,13 @@ export function useKotodamaGame() {
         }
       }
       sim.maxCombo = Math.max(sim.maxCombo, sim.combo);
+
+      // 言霊爆ぜ（detonateBomb）が確定中の enemy 自身を消滅させた場合、
+      // 以降の撃破処理（killBonus 二重計上）や lockedId の亡霊参照を防ぐ
+      if (!sim.enemies.some((e) => e.id === enemy.id)) {
+        if (sim.lockedId === enemy.id) sim.lockedId = null;
+        return;
+      }
 
       enemy.typed += kana.length;
       sim.lockedId = enemy.id;
@@ -521,6 +534,18 @@ export function useKotodamaGame() {
   useEffect(() => {
     return () => clearSettleTimer();
   }, [clearSettleTimer]);
+
+  // フォーカスロス・タブ切替（Alt-Tab 等）で keyup を取り逃すと押下状態が残り、
+  // 同じキーの keydown がオートリピート扱いで無視され続けるため、押下状態をリセットする
+  useEffect(() => {
+    const handleReset = () => resetChordState();
+    window.addEventListener("blur", handleReset);
+    document.addEventListener("visibilitychange", handleReset);
+    return () => {
+      window.removeEventListener("blur", handleReset);
+      document.removeEventListener("visibilitychange", handleReset);
+    };
+  }, [resetChordState]);
 
   return {
     snapshot,

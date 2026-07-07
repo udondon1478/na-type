@@ -13,6 +13,9 @@ export type UpgradeId =
   | "jouka" // 浄化の風: ウェーブ開始時にHP回復
   | "mikiri"; // 見切り: ミス時にコンボが半減で済む
 
+/** 取得済み強化のスタック数（UpgradeId ごとの取得回数） */
+export type UpgradeStacks = Partial<Record<UpgradeId, number>>;
+
 export interface UpgradeDef {
   id: UpgradeId;
   name: string;
@@ -59,7 +62,7 @@ export interface GameSnapshot {
   /** phase === "upgrade" のときの選択肢 */
   upgradeOptions: UpgradeId[];
   /** 取得済み強化のスタック数 */
-  stacks: Partial<Record<UpgradeId, number>>;
+  stacks: UpgradeStacks;
   /** このウェーブで残っている結界チャージ（被弾無効化） */
   shieldCharges: number;
   /** 敵全体停止の残りミリ秒（表示用） */
