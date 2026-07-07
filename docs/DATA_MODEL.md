@@ -61,7 +61,7 @@ interface AppSettings {
 - デフォルト: `{ showKeyboard: true, layoutView: "qwerty" }`
 - `inputMethod === undefined` が「初回セットアップ未完了」の判定に使われる（`isSetupCompleted()`）
 - `karabiner` / `remapping`: OS側で薙刀式に変換済みのかなを受け取る
-- `physical`: 変換ツールなしで物理キー位置により薙刀式を判定（例: J→あ）。Phase1は単独打鍵のみ対応（同時打鍵は #3）
+- `physical`: 変換ツールなしで物理キー位置により薙刀式を判定（例: J→あ）。単独打鍵に加え、濁点・シフト・combo 等の同時打鍵に対応。「次に打つべきかな」が既知なので、押下中のキー集合が目標かなのキー集合に一致した時点で確定する目標かなベース方式（`resolve-chord-to-kana.ts` の `matchChordToTarget`）。押す速さ・順序に依存せず、プレフィックス問題（あ=J ⊂ ど=J+D）も目標側で一意に解決。位置づけはツール導入前のお試し練習で、本物の薙刀式とはタイミング判定が異なる
 - 旧 `romaji` モードは廃止。保存済みの値は読み込み時に `physical` へ移行（`getSettings()`）
 
 ## 設計上の注意
