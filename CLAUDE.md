@@ -63,6 +63,8 @@ src/
 │   ├── page.tsx                # ダッシュボード
 │   ├── naginata/               # 薙刀式セクション
 │   │   ├── page.tsx            # レッスン選択
+│   │   ├── drill/page.tsx      # 単語ドリル
+│   │   ├── game/page.tsx       # 言霊ディフェンス（ローグライク・タイピングゲーム）
 │   │   └── lesson/[id]/       # レッスン実行（動的ルート）
 │   │       ├── page.tsx        # Server Component + generateStaticParams
 │   │       └── LessonClient.tsx # Client Component（実際のUI）
@@ -70,14 +72,17 @@ src/
 ├── components/
 │   ├── keyboard/               # SVGキーボードビジュアライザー
 │   ├── typing/                 # タイピングエリア・目標テキスト
+│   ├── game/                   # 言霊ディフェンスのUI（フィールド・HUD・強化選択等）
 │   ├── stats/                  # 統計表示
 │   ├── layout/                 # ヘッダー等
 │   └── ui/                     # shadcn/ui コンポーネント（自動生成）
 ├── data/naginata/
 │   ├── layout.ts               # 自動生成（parse-karabiner.ts の出力）
-│   └── lessons.ts              # レッスン1-8 定義
+│   ├── lessons.ts              # レッスン1-8 定義
+│   └── words.ts                # 単語ドリル・ゲーム共用の単語辞書
 ├── hooks/                      # カスタムフック
 ├── lib/                        # ユーティリティ
+│   └── game/                   # ゲームの純粋ロジック（ウェーブ・スコア・強化・chord照合）
 └── types/                      # TypeScript型定義
 ```
 
@@ -91,6 +96,8 @@ src/
 | `src/hooks/useKeyboardInput.ts` | キーボードイベント取得 | IME compositionend／physicalモードの keyup にも対応 |
 | `src/lib/kana-to-keys.ts` | かな→物理キー逆引き | 最もシンプルな入力方法を優先 |
 | `src/lib/resolve-chord-to-kana.ts` | 物理キー集合→かな逆引き（全inputType） | physicalモードの同時打鍵判定。非かな・機能エントリは除外 |
+| `src/hooks/useKotodamaGame.ts` | 言霊ディフェンスの状態機械＋rAFゲームループ | menu→playing→upgrade→gameover。内部状態はrefでミューテートしスナップショットをstateに同期 |
+| `src/lib/game/engine.ts` | ゲームの純粋ロジック | matchChordToEnemies は matchChordToTarget の複数敵拡張 |
 
 ## 薙刀式の入力タイプ
 
@@ -109,6 +116,7 @@ src/
 natype:sessions  → SessionResult[]（直近100件）
 natype:progress  → Record<string, LessonProgress>
 natype:settings  → AppSettings
+natype:game      → Record<string, GameRecord>（言霊ディフェンスのレベル別記録）
 ```
 
 ## Karabiner JSONパーサー
@@ -131,13 +139,14 @@ npx tsx scripts/parse-karabiner.ts
 - [x] 統合ダッシュボード
 - [x] Arensitoフリータイピング（英語テキスト）
 - [x] localStorage永続化
+- [x] 単語ドリルモード（レッスン範囲フィルタ付き）
+- [x] 言霊ディフェンス（ローグライク・タイピングゲーム: ウェーブ制＋強化選択＋レベル別ハイスコア）
 
 ## 未実装（後続フェーズ）
 
 - [ ] KeyboardEvent.code の Karabiner 経由での動作検証
 - [ ] フリータイピング（薙刀式向け任意テキスト）
-- [ ] 単語・フレーズドリルモード
-- [ ] ゲーミフィケーション（スコア、レベル、実績）
+- [ ] ゲーミフィケーション拡張（実績、ゲーム内イベント・ボス等）
 - [ ] 統計ヒートマップ（キー頻度・エラー分布）
 - [ ] 同時打鍵成功率分析
 - [ ] i18n（英語対応）

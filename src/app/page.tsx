@@ -99,6 +99,25 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
+
+        <Link href="/naginata/game">
+          <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-xl">言霊ディフェンス</CardTitle>
+                <Badge variant="secondary">ゲーム</Badge>
+              </div>
+              <CardDescription>
+                薙刀式で降ってくる言霊を撃ち落とすローグライク・タイピングゲーム。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                ウェーブごとに強化を選んで生き延びろ
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
