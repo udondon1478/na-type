@@ -44,10 +44,18 @@ for (const m of sorted) {
 
 /**
  * かな文字に対応する物理キーを返す
+ *
+ * shifted かな（例: の＝Space+J）はスペースとの同時押しが必要なため、
+ * ガイド表示が実際の運指と一致するよう先頭に "spacebar" を含める。
  * @returns Karabinerキーコードの配列、見つからない場合は空配列
  */
 export function getKeysForKana(kana: string): string[] {
-  return kanaGuideMap.get(kana)?.keys ?? [];
+  const guide = kanaGuideMap.get(kana);
+  if (!guide) return [];
+  if (guide.inputType === "shifted" && !guide.keys.includes("spacebar")) {
+    return ["spacebar", ...guide.keys];
+  }
+  return guide.keys;
 }
 
 /**

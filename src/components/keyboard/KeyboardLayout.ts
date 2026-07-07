@@ -85,7 +85,25 @@ const row3: PhysicalKeyInfo[] = [
   key("slash", "/", 2, 9, "right", "pinky"),
 ];
 
-export const KEYBOARD_KEYS: PhysicalKeyInfo[] = [...row1, ...row2, ...row3];
+// スペースバー（薙刀式 shifted の同時押しキー）
+// Q/A/Z 段のみ描画していると Space が存在せず、shifted かなのガイドを示せないため最下段に追加する
+const SPACE_WIDTH = KEY_WIDTH * 5 + KEY_GAP * 4;
+const alphaRows: PhysicalKeyInfo[] = [...row1, ...row2, ...row3];
+const contentWidth = Math.max(...alphaRows.map((k) => k.x + k.width));
+const spaceKey: PhysicalKeyInfo = {
+  karabinerCode: "spacebar",
+  eventCode: KARABINER_TO_EVENT_CODE.spacebar,
+  qwertyLabel: "Space",
+  x: (contentWidth - SPACE_WIDTH) / 2,
+  y: 3 * (KEY_HEIGHT + KEY_GAP),
+  width: SPACE_WIDTH,
+  height: KEY_HEIGHT,
+  row: 3,
+  hand: "left",
+  finger: "thumb",
+};
+
+export const KEYBOARD_KEYS: PhysicalKeyInfo[] = [...alphaRows, spaceKey];
 
 export const KEYBOARD_WIDTH =
   Math.max(...KEYBOARD_KEYS.map((k) => k.x + k.width)) + 8;
