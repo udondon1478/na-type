@@ -45,7 +45,7 @@ export interface PhysicalKeyInfo {
   y: number;
   width: number;
   height: number;
-  /** キー行（0=数字行, 1=Q行, 2=A行, 3=Z行） */
+  /** キー行（0=Q行, 1=A行, 2=Z行, 3=最下段/Space） */
   row: number;
   /** 左手/右手 */
   hand: "left" | "right";
