@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { stakeMod } from "@/lib/fuda/balance";
 import { bossForRound } from "@/lib/fuda/engine";
 import type { RunState } from "@/types/fuda";
 
@@ -27,6 +28,14 @@ export function FudaHud({ run }: FudaHudProps) {
             幕 <span className="text-foreground font-bold">{run.ante}</span>
             <span className="text-xs text-muted-foreground/60">/8</span>
           </span>
+          {run.stake > 1 && (
+            <span
+              className="text-xs text-violet-400"
+              title={stakeMod(run.stake).description}
+            >
+              {stakeMod(run.stake).name}
+            </span>
+          )}
           <span
             className={cn(
               "font-bold",

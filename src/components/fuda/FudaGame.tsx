@@ -23,6 +23,7 @@ import {
   updateSettings,
 } from "@/lib/storage";
 import { Eye, EyeOff, Volume2, VolumeX } from "lucide-react";
+import { canUseSchool } from "@/lib/fuda/schools";
 import { CharmShelf } from "./CharmShelf";
 import { FudaHud } from "./FudaHud";
 import { FudaMenu, MIN_POOL_SIZE } from "./FudaMenu";
@@ -31,7 +32,7 @@ import { RoundIntro } from "./RoundIntro";
 import { RoundResult } from "./RoundResult";
 import { RunResult } from "./RunResult";
 import { ShopScreen } from "./ShopScreen";
-import type { RunState } from "@/types/fuda";
+import type { FudaMeta, RunState, SchoolId } from "@/types/fuda";
 
 /** 完了済みレッスンから初期レベル（単語範囲）を推定する */
 function detectInitialLevel(): number {
@@ -46,6 +47,9 @@ function detectInitialLevel(): number {
 
 export function FudaGame() {
   const [level, setLevel] = useState(1);
+  const [stake, setStake] = useState(1);
+  const [schoolId, setSchoolId] = useState<SchoolId>("kata");
+  const [meta, setMeta] = useState<FudaMeta | null>(null);
   const [savedRun, setSavedRun] = useState<RunState | null>(null);
   const [soundOn, setSoundOn] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(
@@ -73,18 +77,28 @@ export function FudaGame() {
     setSoundOn(save.meta.soundEnabled);
   }, []);
 
-  // メニューに戻るたびに「続きから」の有無を確認する
+  // メニューに戻るたびに「続きから」とメタ進行を読み直す
   useEffect(() => {
     if (phase !== "menu") return;
+    const save = getFudaSave();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSavedRun(deserializeRun(getFudaSave().currentRun));
+    setSavedRun(deserializeRun(save.currentRun));
+    setMeta(save.meta);
   }, [phase]);
+
+  // 単語範囲を変えたとき、その範囲で組めない流派は基本に戻す
+  useEffect(() => {
+    if (!canUseSchool(schoolId, wordPool)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSchoolId("kata");
+    }
+  }, [schoolId, wordPool]);
 
   const startRun = useCallback(() => {
     if (wordPool.length < MIN_POOL_SIZE) return;
     ensureAudio();
-    game.startRun({ lessonLevel: level, wordPool });
-  }, [game, level, wordPool]);
+    game.startRun({ lessonLevel: level, wordPool, stake, schoolId });
+  }, [game, level, wordPool, stake, schoolId]);
 
   const continueRun = useCallback(() => {
     if (!savedRun) return;
@@ -264,7 +278,12 @@ export function FudaGame() {
         <FudaMenu
           level={level}
           onLevelChange={setLevel}
-          wordPoolSize={wordPool.length}
+          wordPool={wordPool}
+          stake={stake}
+          onStakeChange={setStake}
+          schoolId={schoolId}
+          onSchoolChange={setSchoolId}
+          meta={meta}
           savedRun={savedRun}
           onStart={startRun}
           onContinue={continueRun}
@@ -339,6 +358,7 @@ export function FudaGame() {
       {(phase === "runClear" || phase === "runFail") && (
         <RunResult
           run={state}
+          newUnlocks={game.newUnlocks}
           onRetry={startRun}
           onBackToMenu={game.backToMenu}
         />

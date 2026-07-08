@@ -27,6 +27,7 @@ import {
 import { deserializeRun, serializeRun } from "../src/lib/fuda/save";
 import { scoreUnit, scoreWord } from "../src/lib/fuda/scoring";
 import { getInputTypeForKana } from "../src/lib/kana-to-keys";
+import { getAvailableKana } from "../src/lib/word-filter";
 import type {
   ActiveWordPlay,
   KanaAttr,
@@ -198,15 +199,44 @@ console.log("\n[4] 辞書レポート");
         .map(([k, v]) => `${k}=${v}`)
         .join(" ")
   );
-  // 役が成立しうる語が存在するかの目安
-  const chokaWords = wordDictionary.filter((w) => [...w].length >= 6).length;
-  const dakuryuWords = wordDictionary.filter(
-    (w) => wordAttrProfile(w).dakuten >= 3
-  ).length;
-  console.log(`  長歌候補（6かな以上）: ${chokaWords}語 / 濁流候補（濁点3+）: ${dakuryuWords}語`);
+  // 役が成立しうる語が存在するかの目安（ビルドの多様性チェック）
+  const isJougo = (w: string) => {
+    const chars = [...w];
+    if (chars.length < 4 || chars.length % 2 !== 0) return false;
+    const half = chars.length / 2;
+    return chars.slice(0, half).join("") === chars.slice(half).join("");
+  };
+  const count = (fn: (w: string) => boolean) => wordDictionary.filter(fn).length;
+  console.log(
+    `  役候補: 長歌=${count((w) => [...w].length >= 6)}` +
+      ` 濁流=${count((w) => wordAttrProfile(w).dakuten >= 3)}` +
+      ` 破音=${count((w) => wordAttrProfile(w).handakuten >= 1)}` +
+      ` 畳語=${count(isJougo)}` +
+      ` 浮舟=${count((w) => wordAttrProfile(w).shifted >= 4)}` +
+      ` 疾風=${count((w) => {
+        const units = segmentWord(w);
+        return units.length >= 2 && units.every((u) => classifyUnit(u) === "combo");
+      })}` +
+      ` 促音=${count((w) => w.includes("っ"))}` +
+      ` 一文字=${count((w) => [...w].length <= 2)}`
+  );
   if (unknownChars.size > 0) {
     console.warn(`  ⚠ 分類不能の文字: ${[...unknownChars].join(", ")}`);
   }
+
+  // 全語がレッスン8までの累積かなで構成されていること（範囲フィルタで消えない）
+  assert(
+    (() => {
+      const available = getAvailableKana(8);
+      return wordDictionary.every((w) => [...w].every((ch) => available.has(ch)));
+    })(),
+    "全語がレッスン8までのかなで構成されている"
+  );
+  // 重複語がないこと
+  assert(
+    new Set(wordDictionary).size === wordDictionary.length,
+    "辞書に重複語がない"
+  );
 
   // 単語カード構築が全語で成功すること
   assert(

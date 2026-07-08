@@ -67,19 +67,24 @@ export const YAKU_DEFS: Record<YakuId, YakuDef> = {
     base: { chips: 0, mult: 1.5 },
     perLevel: { chips: 5, mult: 0.5 },
   },
-  kouta: {
-    id: "kouta",
-    name: "小唄",
-    description: "小書きかな2つ以上",
-    check: (_card, play) => countAttr(play, "kogaki") >= 2,
-    base: { chips: 0, mult: 1.5 },
-    perLevel: { chips: 5, mult: 0.5 },
+  jougo: {
+    id: "jougo",
+    name: "畳語",
+    description: "前半と後半が同じ繰り返し語（ざわざわ 等、4かな以上）",
+    check: (card) => {
+      const chars = [...card.word];
+      if (chars.length < 4 || chars.length % 2 !== 0) return false;
+      const half = chars.length / 2;
+      return chars.slice(0, half).join("") === chars.slice(half).join("");
+    },
+    base: { chips: 0, mult: 2 },
+    perLevel: { chips: 5, mult: 1 },
   },
   ukifune: {
     id: "ukifune",
     name: "浮舟",
-    description: "シフトかな4つ以上",
-    check: (_card, play) => countAttr(play, "shifted") >= 4,
+    description: "シフトかな3つ以上",
+    check: (_card, play) => countAttr(play, "shifted") >= 3,
     base: { chips: 0, mult: 2 },
     perLevel: { chips: 10, mult: 1 },
   },

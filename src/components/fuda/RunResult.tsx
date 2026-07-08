@@ -1,5 +1,6 @@
 "use client";
 
+import type { AchievementDef } from "@/lib/fuda/unlocks";
 import { YAKU_DEFS } from "@/lib/fuda/yaku";
 import type { RunState, YakuId } from "@/types/fuda";
 
@@ -7,11 +8,18 @@ const ROUND_LABELS = ["序戦", "破戦", "急戦"] as const;
 
 interface RunResultProps {
   run: RunState;
+  /** このランで新規解放された実績 */
+  newUnlocks: AchievementDef[];
   onRetry: () => void;
   onBackToMenu: () => void;
 }
 
-export function RunResult({ run, onRetry, onBackToMenu }: RunResultProps) {
+export function RunResult({
+  run,
+  newUnlocks,
+  onRetry,
+  onBackToMenu,
+}: RunResultProps) {
   const cleared = run.phase === "runClear";
   const stats = run.stats;
   const accuracy =
@@ -82,6 +90,35 @@ export function RunResult({ run, onRetry, onBackToMenu }: RunResultProps) {
                 className="rounded border border-border bg-card px-2 py-0.5"
               >
                 {YAKU_DEFS[id].name} ×{count}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {newUnlocks.length > 0 && (
+        <div className="text-center space-y-1.5">
+          <p className="text-xs font-bold text-amber-400 animate-pulse">
+            ✨ 実績解放！
+          </p>
+          <div className="flex gap-2 justify-center flex-wrap text-sm">
+            {newUnlocks.map((def) => (
+              <span
+                key={def.id}
+                title={def.description}
+                className="rounded border border-amber-400/50 bg-amber-400/10 px-2.5 py-1"
+              >
+                <span className="font-bold">{def.name}</span>
+                {def.rewardCharm && (
+                  <span className="text-xs text-muted-foreground ml-1.5">
+                    お守り解放
+                  </span>
+                )}
+                {def.rewardSchool && (
+                  <span className="text-xs text-muted-foreground ml-1.5">
+                    流派解放
+                  </span>
+                )}
               </span>
             ))}
           </div>

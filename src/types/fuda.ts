@@ -33,7 +33,7 @@ export type YakuId =
   | "hayate" // 疾風: 全単位チョード（2単位以上）
   | "dakuryu" // 濁流: 濁点3+
   | "haon" // 破音: 半濁点1+
-  | "kouta" // 小唄: 小書き2+
+  | "jougo" // 畳語: 前半と後半が同じ繰り返し語（ざわざわ 等）
   | "ukifune" // 浮舟: シフト4+
   | "hayawaza" // 早業: 平均打鍵間隔が閾値未満
   | "mushin" // 無心: ノーミス連続語ボーナス
@@ -45,7 +45,7 @@ export type CharmId =
   | "dakutenObi" // 濁点の帯
   | "seionObi" // 静音の帯
   | "kazeObi" // 風の帯
-  | "shizukuObi" // 雫の帯
+  | "sokuonObi" // 促音の帯
   | "homuraObi" // 焔の帯
   | "tameTokkuri" // 貯め徳利
   | "nagaiki" // 長息

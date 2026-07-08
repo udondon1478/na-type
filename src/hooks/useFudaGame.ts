@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { BALANCE } from "@/lib/fuda/balance";
 import { createMenuState, fudaReducer } from "@/lib/fuda/engine";
 import { matchChordToHand, type HandChordCandidate } from "@/lib/fuda/input";
 import { serializeRun } from "@/lib/fuda/save";
 import { toKanaAttr } from "@/lib/fuda/segment";
+import { evaluateUnlocks, type AchievementDef } from "@/lib/fuda/unlocks";
 import { resolveChordEntry } from "@/lib/resolve-chord-to-kana";
 import { updateFudaSave } from "@/lib/storage";
 import type { KanaAttr, RunState, SchoolId } from "@/types/fuda";
@@ -30,6 +31,8 @@ interface ChordPending {
 
 export function useFudaGame() {
   const [state, dispatch] = useReducer(fudaReducer, undefined, createMenuState);
+  /** 直近のラン終了で新規解放された実績（RunResult 表示用） */
+  const [newUnlocks, setNewUnlocks] = useState<AchievementDef[]>([]);
 
   // chord 層が最新状態を同期的に読むためのミラー
   const stateRef = useRef(state);
@@ -208,6 +211,7 @@ export function useFudaGame() {
     }) => {
       resetChordState();
       finalizedSeedRef.current = null;
+      setNewUnlocks([]);
       // ラン開始をメタ統計に数え、アンロック状況をランにスナップショットする
       const save = updateFudaSave((s) => ({
         ...s,
@@ -309,10 +313,10 @@ export function useFudaGame() {
     ) {
       finalizedSeedRef.current = run.seed;
       const cleared = run.phase === "runClear";
-      updateFudaSave((save) => ({
-        ...save,
-        currentRun: null,
-        meta: {
+      let achieved: AchievementDef[] = [];
+      updateFudaSave((save) => {
+        // まず統計を加算したメタを作り、それに対して実績を評価する
+        const metaAfter = {
           ...save.meta,
           stakeUnlocked: cleared
             ? Math.max(
@@ -333,8 +337,34 @@ export function useFudaGame() {
               : save.meta.stats.winsByStake,
             totalKana: save.meta.stats.totalKana + run.stats.kanaTyped,
           },
-        },
-      }));
+        };
+        achieved = evaluateUnlocks(run, cleared, metaAfter);
+        const now = Date.now();
+        for (const def of achieved) {
+          metaAfter.achievements = {
+            ...metaAfter.achievements,
+            [def.id]: now,
+          };
+          if (def.rewardCharm && !metaAfter.unlockedCharms.includes(def.rewardCharm)) {
+            metaAfter.unlockedCharms = [
+              ...metaAfter.unlockedCharms,
+              def.rewardCharm,
+            ];
+          }
+          if (
+            def.rewardSchool &&
+            !metaAfter.unlockedSchools.includes(def.rewardSchool)
+          ) {
+            metaAfter.unlockedSchools = [
+              ...metaAfter.unlockedSchools,
+              def.rewardSchool,
+            ];
+          }
+        }
+        return { ...save, currentRun: null, meta: metaAfter };
+      });
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ラン終了時の一度きりの派生反映
+      setNewUnlocks(achieved);
     }
   }, [state]);
 
@@ -367,6 +397,7 @@ export function useFudaGame() {
 
   return {
     state,
+    newUnlocks,
     startRun,
     restoreRun,
     beginRound,

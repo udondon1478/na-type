@@ -45,7 +45,7 @@ export const BALANCE = {
   },
   quota: {
     /** 幕ごとの基準ノルマ（index=幕番号、[0]は未使用） */
-    anteBase: [0, 300, 450, 700, 1100, 1700, 2600, 4000, 6000],
+    anteBase: [0, 250, 420, 650, 1000, 1500, 2200, 3200, 4500],
     /** 勝負係数（序戦/破戦/急戦） */
     roundFactor: [1, 1.5, 2.2],
   },
@@ -79,8 +79,8 @@ export const BALANCE = {
   yaku: {
     /** 無心に必要なノーミス連続語数 */
     mushinStreak: 5,
-    /** 早業の平均打鍵間隔閾値（ms） */
-    hayawazaAvgMs: 250,
+    /** 早業の平均打鍵間隔閾値（ms）。200kpm弱から届く値にする（速度の崖を作らない） */
+    hayawazaAvgMs: 320,
     /** 早業の最低かな数 */
     hayawazaMinKana: 4,
   },

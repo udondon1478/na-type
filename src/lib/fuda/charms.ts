@@ -37,7 +37,16 @@ export const CHARM_DEFS: Record<CharmId, CharmDef> = {
   dakutenObi: attrChipCharm("dakutenObi", "濁点の帯", "💧", "dakuten", "濁点", 15),
   seionObi: attrChipCharm("seionObi", "静音の帯", "🕊️", "seion", "清音", 8),
   kazeObi: attrChipCharm("kazeObi", "風の帯", "🍃", "shifted", "シフト", 12),
-  shizukuObi: attrChipCharm("shizukuObi", "雫の帯", "💠", "kogaki", "小書き", 20),
+  sokuonObi: {
+    id: "sokuonObi",
+    name: "促音の帯",
+    icon: "💠",
+    rarity: "common",
+    price: 4,
+    describe: () => "「っ」を打つたび +18チップ",
+    onUnitScored: (ctx) =>
+      ctx.unit?.unit.includes("っ") ? { chips: 18, label: "+18" } : null,
+  },
   homuraObi: attrChipCharm("homuraObi", "焔の帯", "🔥", "combo", "チョード", 25),
   tameTokkuri: {
     id: "tameTokkuri",

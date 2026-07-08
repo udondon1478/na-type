@@ -14,6 +14,7 @@ import { BOSS_DEFS, rollBoss } from "./bosses";
 import { CHARM_DEFS, interestCapBonus } from "./charms";
 import { addWordToDeck, OFUDA_DEFS, rollPackWords } from "./items";
 import * as rng from "./rng";
+import { buildSchoolDeckWords } from "./schools";
 import { buildCard, unitEndOffsets } from "./segment";
 import { rerollShop, rollShop } from "./shop";
 import { scoreUnit, scoreWord, walkCharms } from "./scoring";
@@ -106,9 +107,9 @@ export interface CreateRunOptions {
 /** 新規ランを開始する（phase: roundIntro） */
 export function createRun(options: CreateRunOptions): RunState {
   let s = rng.seedFrom(options.seed);
-  const [shuffled, s2] = rng.shuffle(s, options.wordPool);
+  const schoolId = options.schoolId ?? "kata";
+  const [deckWords, s2] = buildSchoolDeckWords(s, schoolId, options.wordPool);
   s = s2;
-  const deckWords = shuffled.slice(0, BALANCE.deck.initialSize);
   const deck = deckWords.map((word, i) => buildCard(i + 1, word));
   const [bossId, s3] = rollBoss(s, []);
   s = s3;
@@ -119,7 +120,7 @@ export function createRun(options: CreateRunOptions): RunState {
     seed: options.seed,
     rngState: s,
     stake: options.stake ?? 1,
-    schoolId: options.schoolId ?? "kata",
+    schoolId,
     lessonLevel: options.lessonLevel,
     wordPool: options.wordPool,
     nextCardUid: deck.length + 1,
