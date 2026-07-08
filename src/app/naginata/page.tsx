@@ -18,16 +18,32 @@ export default function NaginataPage() {
         </p>
       </div>
 
-      <Link href="/naginata/drill">
-        <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-          <CardHeader>
-            <CardTitle className="text-base">単語ドリル</CardTitle>
-            <CardDescription>
-              習得済みのかなで構成された単語をひたすら入力して定着を図る
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </Link>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Link href="/naginata/drill">
+          <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
+            <CardHeader>
+              <CardTitle className="text-base">単語ドリル</CardTitle>
+              <CardDescription>
+                習得済みのかなで構成された単語をひたすら入力して定着を図る
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href="/naginata/game">
+          <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">言霊ディフェンス</CardTitle>
+                <Badge variant="secondary">ゲーム</Badge>
+              </div>
+              <CardDescription>
+                降ってくる言霊を打ち落とすローグライク。ウェーブごとに強化を選んで生き延びろ
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </Link>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         {naginataLessons.map((lesson, i) => {

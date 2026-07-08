@@ -1,9 +1,11 @@
 import type { SessionResult, LessonProgress, AppSettings } from "@/types/stats";
+import type { GameRecord } from "@/types/game";
 
 const KEYS = {
   sessions: "natype:sessions",
   progress: "natype:progress",
   settings: "natype:settings",
+  game: "natype:game",
 } as const;
 
 const MAX_SESSIONS = 100;
@@ -75,4 +77,37 @@ export function updateSettings(partial: Partial<AppSettings>): void {
 
 export function isSetupCompleted(): boolean {
   return getSettings().inputMethod !== undefined;
+}
+
+/**
+ * 言霊ディフェンスのプレイ記録（レベル別）
+ * レッスン範囲（1-8）ごとに単語プールが変わるため、ハイスコアはレベル単位で持つ。
+ */
+export function getGameRecords(): Record<string, GameRecord> {
+  return getItem<Record<string, GameRecord>>(KEYS.game, {});
+}
+
+export function getGameRecord(level: number): GameRecord | undefined {
+  return getGameRecords()[String(level)];
+}
+
+/** ラン終了時に記録を更新し、ハイスコア更新だったかを返す */
+export function updateGameRecord(
+  level: number,
+  run: { score: number; wave: number }
+): { isNewRecord: boolean } {
+  const records = getGameRecords();
+  const key = String(level);
+  const existing = records[key];
+  const isNewRecord = run.score > (existing?.highScore ?? 0);
+
+  records[key] = {
+    highScore: Math.max(existing?.highScore ?? 0, run.score),
+    bestWave: Math.max(existing?.bestWave ?? 0, run.wave),
+    totalRuns: (existing?.totalRuns ?? 0) + 1,
+    lastPlayed: Date.now(),
+  };
+
+  setItem(KEYS.game, records);
+  return { isNewRecord };
 }

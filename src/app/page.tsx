@@ -61,7 +61,7 @@ export default function Dashboard() {
 
       <StatsOverview />
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Link href="/naginata">
           <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
             <CardHeader>
@@ -95,6 +95,25 @@ export default function Dashboard() {
             <CardContent>
               <p className="text-sm text-muted-foreground">
                 フリータイピングで練習を開始
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/naginata/game">
+          <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-xl">言霊ディフェンス</CardTitle>
+                <Badge variant="secondary">ゲーム</Badge>
+              </div>
+              <CardDescription>
+                薙刀式で降ってくる言霊を撃ち落とすローグライク・タイピングゲーム。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                ウェーブごとに強化を選んで生き延びろ
               </p>
             </CardContent>
           </Card>
