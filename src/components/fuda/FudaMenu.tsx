@@ -1,12 +1,18 @@
 "use client";
 
 import { BALANCE } from "@/lib/fuda/balance";
+import type { RunState } from "@/types/fuda";
+
+const ROUND_LABELS = ["序戦", "破戦", "急戦"] as const;
 
 interface FudaMenuProps {
   level: number;
   onLevelChange: (level: number) => void;
   wordPoolSize: number;
+  /** 途中セーブがあれば渡す（「続きから」を表示） */
+  savedRun: RunState | null;
   onStart: () => void;
+  onContinue: () => void;
 }
 
 /** 開始に必要な最低語数（手札1周分は欲しい） */
@@ -16,7 +22,9 @@ export function FudaMenu({
   level,
   onLevelChange,
   wordPoolSize,
+  savedRun,
   onStart,
+  onContinue,
 }: FudaMenuProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[420px] md:min-h-[480px] rounded-lg border border-border bg-background/60 gap-6 px-4 py-8">
@@ -52,14 +60,29 @@ export function FudaMenu({
         </p>
       )}
 
-      <button
-        onClick={onStart}
-        disabled={wordPoolSize < MIN_POOL_SIZE}
-        className="px-6 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
-      >
-        ランを開始
-        <kbd className="ml-2 text-xs opacity-60">Space</kbd>
-      </button>
+      <div className="flex items-center gap-3">
+        {savedRun && (
+          <button
+            onClick={onContinue}
+            className="px-6 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors"
+          >
+            続きから（幕{savedRun.ante} {ROUND_LABELS[savedRun.roundIndex]}）
+            <kbd className="ml-2 text-xs opacity-60">Space</kbd>
+          </button>
+        )}
+        <button
+          onClick={onStart}
+          disabled={wordPoolSize < MIN_POOL_SIZE}
+          className={
+            savedRun
+              ? "px-6 py-2.5 rounded-md border border-border text-sm font-bold hover:bg-accent transition-colors disabled:opacity-50"
+              : "px-6 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
+          }
+        >
+          {savedRun ? "新しくランを開始" : "ランを開始"}
+          {!savedRun && <kbd className="ml-2 text-xs opacity-60">Space</kbd>}
+        </button>
+      </div>
     </div>
   );
 }

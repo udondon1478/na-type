@@ -24,6 +24,7 @@ import {
   segmentWord,
   wordAttrProfile,
 } from "../src/lib/fuda/segment";
+import { deserializeRun, serializeRun } from "../src/lib/fuda/save";
 import { scoreUnit, scoreWord } from "../src/lib/fuda/scoring";
 import { getInputTypeForKana } from "../src/lib/kana-to-keys";
 import type {
@@ -301,9 +302,118 @@ console.log("\n[5] reducer スモーク");
   const won = (run.round?.scored ?? 0) >= (run.round?.quota ?? Infinity);
   run = fudaReducer(run, { type: "confirmRoundResult", at: (at += 150) });
   assert(
-    won ? run.phase === "roundIntro" && run.roundIndex === 1 : run.phase === "runFail",
-    `確認後の遷移: ${run.phase}（${won ? "勝利→破戦へ" : "敗北→runFail"}）`
+    won
+      ? run.phase === "shop" && run.roundIndex === 1
+      : run.phase === "runFail",
+    `確認後の遷移: ${run.phase}（${won ? "勝利→幕間ショップへ" : "敗北→runFail"}）`
   );
+
+  // ── 6. ショップとセーブの往復 ──
+  console.log("\n[6] ショップ・セーブ");
+  if (run.phase === "shop" && run.shop) {
+    // 買えるお守りがあれば買う
+    const idx = run.shop.charmOffers.findIndex(
+      (o) => !o.sold && o.price <= run.money
+    );
+    if (idx >= 0) {
+      const before = run.money;
+      run = fudaReducer(run, { type: "buyCharm", index: idx });
+      assert(
+        run.charms.length === 1 && run.money < before,
+        `お守り購入: ${run.charms[0]?.id}（${before}→${run.money}文）`
+      );
+    } else {
+      console.log("  （所持金不足でお守り購入はスキップ）");
+    }
+
+    // チェックポイントの直列化 → JSON往復 → 復元
+    const ser = JSON.parse(JSON.stringify(serializeRun(run)));
+    const restored = deserializeRun(ser);
+    assert(
+      restored !== null &&
+        restored.ante === run.ante &&
+        restored.money === run.money &&
+        restored.deck.map((c) => c.word).join(",") ===
+          run.deck.map((c) => c.word).join(",") &&
+        restored.charms.length === run.charms.length,
+      "serializeRun → JSON → deserializeRun の往復一致"
+    );
+    assert(deserializeRun({ phase: "round" }) === null, "壊れたセーブは null");
+
+    run = fudaReducer(run, { type: "leaveShop" });
+    assert(
+      run.phase === "roundIntro" && run.roundIndex === 1,
+      "leaveShop → 破戦の roundIntro"
+    );
+  }
+
+  // ── 7. ボットでラン全体を走らせる（終端に到達すること） ──
+  console.log("\n[7] フルランのボット走行");
+  {
+    let bot = createRun({ seed: 777, lessonLevel: 8, wordPool: wordDictionary });
+    let botAt = 10_000;
+    let guard = 0;
+    while (
+      bot.phase !== "runFail" &&
+      bot.phase !== "runClear" &&
+      guard++ < 400
+    ) {
+      switch (bot.phase) {
+        case "roundIntro":
+          bot = fudaReducer(bot, { type: "beginRound", at: botAt });
+          break;
+        case "round": {
+          // 一番長い札を狙って最初の1文字を打つ（同じ先頭かなは左端優先で確定する）
+          const hand = bot.round!.hand;
+          let bestIdx = 0;
+          for (let i = 1; i < hand.length; i++) {
+            const a = bot.deck.find((c) => c.uid === hand[i])!;
+            const b = bot.deck.find((c) => c.uid === hand[bestIdx])!;
+            if ([...a.word].length > [...b.word].length) bestIdx = i;
+          }
+          const target = bot.deck.find((c) => c.uid === hand[bestIdx])!;
+          botAt += 100;
+          bot = fudaReducer(bot, {
+            type: "charTyped",
+            char: [...target.word][0],
+            at: botAt,
+          });
+          // 以降は実際にアクティブになった札を打ち切る（人間がやることと同じ）
+          let inner = 0;
+          while (bot.phase === "round" && bot.round?.active && inner++ < 20) {
+            const active = bot.round.active;
+            const card = bot.deck.find((c) => c.uid === active.cardUid)!;
+            const ch = [...card.word][active.charProgress];
+            botAt += 100;
+            bot = fudaReducer(bot, { type: "charTyped", char: ch, at: botAt });
+          }
+          break;
+        }
+        case "roundResult":
+          bot = fudaReducer(bot, { type: "confirmRoundResult", at: botAt });
+          break;
+        case "shop": {
+          // 買えるものを1つずつ買ってから出る
+          const shopIdx = bot.shop!.charmOffers.findIndex(
+            (o) => !o.sold && o.price <= bot.money
+          );
+          if (shopIdx >= 0 && bot.charms.length < 5) {
+            bot = fudaReducer(bot, { type: "buyCharm", index: shopIdx });
+          } else {
+            bot = fudaReducer(bot, { type: "leaveShop" });
+          }
+          break;
+        }
+        default:
+          guard = 9999;
+      }
+    }
+    assert(
+      bot.phase === "runFail" || bot.phase === "runClear",
+      `ボット走行が終端に到達: ${bot.phase}（幕${bot.ante} / ${bot.stats.wordsCompleted}語 / お守り${bot.charms.length}個）`
+    );
+    assert(guard < 400, `ループガード内で終了（${guard}ステップ）`);
+  }
 }
 
 console.log(

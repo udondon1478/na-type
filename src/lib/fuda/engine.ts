@@ -12,13 +12,18 @@
 import { BALANCE, stakeMod } from "./balance";
 import { BOSS_DEFS, rollBoss } from "./bosses";
 import { CHARM_DEFS, interestCapBonus } from "./charms";
+import { addWordToDeck, OFUDA_DEFS, rollPackWords } from "./items";
 import * as rng from "./rng";
-import { classifyUnit, segmentWord, unitEndOffsets } from "./segment";
+import { buildCard, unitEndOffsets } from "./segment";
+import { rerollShop, rollShop } from "./shop";
 import { scoreUnit, scoreWord, walkCharms } from "./scoring";
+
+export { buildCard } from "./segment";
 import { resolveKeyToKana } from "@/lib/resolve-key-to-kana";
 import type {
   ActiveWordPlay,
   BossDef,
+  CharmId,
   FudaEvent,
   FxDraft,
   KanaAttr,
@@ -63,6 +68,10 @@ export function createMenuState(): RunState {
     stake: 1,
     schoolId: "kata",
     lessonLevel: 8,
+    wordPool: [],
+    nextCardUid: 1,
+    pendingQuotaMult: 1,
+    unlockedCharms: [],
     ante: 1,
     roundIndex: 0,
     bossId: null,
@@ -76,16 +85,11 @@ export function createMenuState(): RunState {
     lastYakuIds: [],
     stats: emptyStats(),
     round: null,
+    shop: null,
     roundReward: null,
     fxQueue: [],
     fxSeq: 0,
   };
-}
-
-/** 単語からカードを構築する（セグメンテーションをキャッシュ） */
-export function buildCard(uid: number, word: string): WordCardData {
-  const units = segmentWord(word);
-  return { uid, word, units, attrs: units.map(classifyUnit) };
 }
 
 export interface CreateRunOptions {
@@ -95,6 +99,8 @@ export interface CreateRunOptions {
   wordPool: string[];
   stake?: number;
   schoolId?: SchoolId;
+  /** アンロック済みお守り（メタからのスナップショット） */
+  unlockedCharms?: CharmId[];
 }
 
 /** 新規ランを開始する（phase: roundIntro） */
@@ -115,6 +121,9 @@ export function createRun(options: CreateRunOptions): RunState {
     stake: options.stake ?? 1,
     schoolId: options.schoolId ?? "kata",
     lessonLevel: options.lessonLevel,
+    wordPool: options.wordPool,
+    nextCardUid: deck.length + 1,
+    unlockedCharms: options.unlockedCharms ?? [],
     bossId,
     bossHistory: [bossId],
     money: BALANCE.economy.initialMoney,
@@ -139,7 +148,8 @@ export function roundConfigFor(run: RunState): RoundConfig {
     quota: Math.round(
       BALANCE.quota.anteBase[run.ante] *
         BALANCE.quota.roundFactor[run.roundIndex] *
-        mod.quotaMult
+        mod.quotaMult *
+        run.pendingQuotaMult
     ),
     hands: BALANCE.hand.handsPerRound + mod.handsDelta,
     discards: BALANCE.hand.discardsPerRound + mod.discardsDelta,
@@ -411,43 +421,48 @@ function beginRound(run: RunState, at: number): RunState {
     charms,
     round,
     roundReward: null,
+    pendingQuotaMult: 1, // 追い風はこの勝負で消費済み（quota は算出済み）
   };
   const walk = walkCharms(next, "onRoundStart", {});
   next = { ...next, charms: walk.charms, money: next.money + walk.moneyGained };
   return pushFx(next, walk.fx);
 }
 
-/** roundResult 確認後の進行（次の勝負 / 次の幕 / クリア / 敗北） */
+/** roundResult 確認後の進行（ショップ / クリア / 敗北）。勝負・幕の添字も進める */
 function advanceAfterResult(run: RunState): RunState {
   const won = (run.round?.scored ?? 0) >= (run.round?.quota ?? Infinity);
   if (!won) {
     return { ...run, phase: "runFail", round: null };
   }
+
+  let advanced: RunState;
   if (run.roundIndex < 2) {
-    return {
+    advanced = {
       ...run,
-      phase: "roundIntro",
       roundIndex: (run.roundIndex + 1) as 0 | 1 | 2,
       round: null,
       roundReward: null,
     };
-  }
-  if (run.ante >= BALANCE.run.finalAnte) {
+  } else if (run.ante >= BALANCE.run.finalAnte) {
     return { ...run, phase: "runClear", round: null };
+  } else {
+    // 次の幕へ（新しいボスを抽選）
+    const [bossId, s] = rollBoss(run.rngState, run.bossHistory.slice(-3));
+    advanced = {
+      ...run,
+      rngState: s,
+      ante: run.ante + 1,
+      roundIndex: 0,
+      bossId,
+      bossHistory: [...run.bossHistory, bossId],
+      round: null,
+      roundReward: null,
+    };
   }
-  // 次の幕へ（新しいボスを抽選）
-  const [bossId, s] = rollBoss(run.rngState, run.bossHistory.slice(-3));
-  return {
-    ...run,
-    phase: "roundIntro",
-    rngState: s,
-    ante: run.ante + 1,
-    roundIndex: 0,
-    bossId,
-    bossHistory: [...run.bossHistory, bossId],
-    round: null,
-    roundReward: null,
-  };
+
+  // 勝利後は幕間ショップを開く
+  const [shop, s2] = rollShop(advanced);
+  return { ...advanced, phase: "shop", rngState: s2, shop };
 }
 
 // ── 入力処理 ──
@@ -557,6 +572,7 @@ export function fudaReducer(run: RunState, event: FudaEvent): RunState {
         wordPool: event.wordPool,
         stake: event.stake,
         schoolId: event.schoolId,
+        unlockedCharms: event.unlockedCharms,
       });
 
     case "beginRound":
@@ -641,6 +657,161 @@ export function fudaReducer(run: RunState, event: FudaEvent): RunState {
     case "confirmRoundResult":
       if (run.phase !== "roundResult") return run;
       return advanceAfterResult(run);
+
+    // ── ショップ ──
+
+    case "buyCharm": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop) return run;
+      const offer = shop.charmOffers[event.index];
+      if (!offer || offer.sold || run.money < offer.price) return run;
+      if (run.charms.length >= BALANCE.hand.charmSlots) return run;
+      return {
+        ...run,
+        money: run.money - offer.price,
+        charms: [...run.charms, { id: offer.charmId, counter: 0 }],
+        shop: {
+          ...shop,
+          charmOffers: shop.charmOffers.map((o, i) =>
+            i === event.index ? { ...o, sold: true } : o
+          ),
+        },
+      };
+    }
+
+    case "buyOfuda": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop || !shop.ofudaOffer) return run;
+      const offer = shop.ofudaOffer;
+      if (offer.sold || run.money < offer.price) return run;
+      if (run.ofudas.length >= BALANCE.hand.ofudaSlots) return run;
+      return {
+        ...run,
+        money: run.money - offer.price,
+        ofudas: [...run.ofudas, offer.ofudaId],
+        shop: { ...shop, ofudaOffer: { ...offer, sold: true } },
+      };
+    }
+
+    case "buyScroll": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop || !shop.scrollOffer) return run;
+      const offer = shop.scrollOffer;
+      if (offer.sold || run.money < offer.price) return run;
+      return {
+        ...run,
+        money: run.money - offer.price,
+        yakuLevels: {
+          ...run.yakuLevels,
+          [offer.yakuId]: (run.yakuLevels[offer.yakuId] ?? 1) + 1,
+        },
+        shop: { ...shop, scrollOffer: { ...offer, sold: true } },
+      };
+    }
+
+    case "buyPack": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop) return run;
+      if (shop.packSold || shop.packChoice !== null) return run;
+      if (run.money < shop.packPrice) return run;
+      const [words, s] = rollPackWords(run);
+      if (words.length === 0) return run;
+      return {
+        ...run,
+        rngState: s,
+        money: run.money - shop.packPrice,
+        shop: { ...shop, packSold: true, packChoice: words },
+      };
+    }
+
+    case "pickPackWord": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop || !shop.packChoice) return run;
+      if (!shop.packChoice.includes(event.word)) return run;
+      return {
+        ...addWordToDeck(run, event.word),
+        shop: { ...shop, packChoice: null },
+      };
+    }
+
+    case "sellCharm": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop) return run;
+      const charm = run.charms[event.slot];
+      if (!charm) return run;
+      const refund = Math.max(
+        1,
+        Math.floor(CHARM_DEFS[charm.id].price * BALANCE.economy.sellRatio)
+      );
+      return {
+        ...run,
+        money: run.money + refund,
+        charms: run.charms.filter((_, i) => i !== event.slot),
+      };
+    }
+
+    case "rerollShop": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop) return run;
+      if (run.money < shop.rerollPrice) return run;
+      const paid = { ...run, money: run.money - shop.rerollPrice };
+      const [next, s] = rerollShop(paid, shop);
+      return { ...paid, rngState: s, shop: next };
+    }
+
+    case "removeDeckWord": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop) return run;
+      if (run.deck.length <= 1) return run; // デッキが空になる削除は不可
+      const free = shop.pendingAction === "remove";
+      if (!free && run.money < shop.removePrice) return run;
+      if (!run.deck.some((c) => c.uid === event.uid)) return run;
+      return {
+        ...run,
+        money: free ? run.money : run.money - shop.removePrice,
+        deck: run.deck.filter((c) => c.uid !== event.uid),
+        shop: { ...shop, pendingAction: free ? null : shop.pendingAction },
+      };
+    }
+
+    case "copyDeckWord": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop || shop.pendingAction !== "copy") {
+        return run;
+      }
+      const card = run.deck.find((c) => c.uid === event.uid);
+      if (!card) return run;
+      return {
+        ...addWordToDeck(run, card.word),
+        shop: { ...shop, pendingAction: null },
+      };
+    }
+
+    case "useOfuda": {
+      const shop = run.shop;
+      if (run.phase !== "shop" || !shop) return run;
+      const ofudaId = run.ofudas[event.slot];
+      if (ofudaId === undefined) return run;
+      const def = OFUDA_DEFS[ofudaId];
+      if (!def.canUse(run)) return run;
+      const consumed: RunState = {
+        ...run,
+        ofudas: run.ofudas.filter((_, i) => i !== event.slot),
+      };
+      return def.apply(consumed);
+    }
+
+    case "leaveShop":
+      if (run.phase !== "shop") return run;
+      // デッキ操作待ちのままは離脱不可（UI 側でも防ぐ）
+      if (run.shop?.pendingAction || run.shop?.packChoice) return run;
+      return { ...run, phase: "roundIntro", shop: null };
+
+    // ── 永続化 ──
+
+    case "restoreRun":
+      // 検証は lib/fuda/save.ts の deserializeRun が担う
+      return event.run;
 
     case "backToMenu":
       return createMenuState();

@@ -187,6 +187,21 @@ export type FxDraft =
 /** 演出イベント。reducer が採点と同時に積み、UI が順次再生する（追記専用） */
 export type FxEvent = FxDraft & { seq: number };
 
+/** ショップの品揃え */
+export interface ShopState {
+  charmOffers: { charmId: CharmId; price: number; sold: boolean }[];
+  ofudaOffer: { ofudaId: OfudaId; price: number; sold: boolean } | null;
+  scrollOffer: { yakuId: YakuId; price: number; sold: boolean } | null;
+  packPrice: number;
+  packSold: boolean;
+  /** 単語パック購入後、3語から1語を選ぶ状態 */
+  packChoice: string[] | null;
+  /** 御札（祓串/写経）使用後のデッキ操作待ち */
+  pendingAction: "remove" | "copy" | null;
+  removePrice: number;
+  rerollPrice: number;
+}
+
 /** ラン全体の状態（phase を含む唯一の真実） */
 export interface RunState {
   phase: FudaPhase;
@@ -198,6 +213,14 @@ export interface RunState {
   schoolId: SchoolId;
   /** 単語範囲（レッスン1-8）。デッキ構築と表示に使う */
   lessonLevel: number;
+  /** レッスン範囲でフィルタ済みの単語プール（単語パックの抽選元） */
+  wordPool: string[];
+  /** デッキに札を追加するときの次の uid */
+  nextCardUid: number;
+  /** 次の勝負のノルマ倍率（御札「追い風」。勝負開始で 1 に戻る） */
+  pendingQuotaMult: number;
+  /** アンロック済みお守り（ショップ抽選に使う。ラン開始時にメタからスナップショット） */
+  unlockedCharms: CharmId[];
   /** 幕（1..8） */
   ante: number;
   /** 勝負種別（0=序戦, 1=破戦, 2=急戦） */
@@ -218,6 +241,7 @@ export interface RunState {
   lastYakuIds: YakuId[];
   stats: RunStats;
   round: RoundState | null;
+  shop: ShopState | null;
   /** roundResult 表示用。勝利時のみセット */
   roundReward: RewardBreakdown | null;
   fxQueue: FxEvent[];
@@ -317,6 +341,17 @@ export interface BossDef {
   };
 }
 
+/** 御札（使い切りアイテム）の定義 */
+export interface OfudaDef {
+  id: OfudaId;
+  name: string;
+  icon: string;
+  description: string;
+  canUse(run: RunState): boolean;
+  /** 使用効果。抽選が要る場合は rngState を消費した新しい RunState を返す */
+  apply(run: RunState): RunState;
+}
+
 // ── reducer イベント ──
 
 export type FudaEvent =
@@ -328,6 +363,7 @@ export type FudaEvent =
       wordPool: string[];
       stake?: number;
       schoolId?: SchoolId;
+      unlockedCharms?: CharmId[];
     }
   | { type: "beginRound"; at: number }
   | { type: "charTyped"; char: string; at: number; keyCode?: string }
@@ -344,6 +380,20 @@ export type FudaEvent =
   | { type: "abortWord" }
   | { type: "timeUp"; at: number }
   | { type: "confirmRoundResult"; at: number }
+  // ── ショップ ──
+  | { type: "buyCharm"; index: number }
+  | { type: "buyOfuda" }
+  | { type: "buyScroll" }
+  | { type: "buyPack" }
+  | { type: "pickPackWord"; word: string }
+  | { type: "sellCharm"; slot: number }
+  | { type: "rerollShop" }
+  | { type: "removeDeckWord"; uid: number }
+  | { type: "copyDeckWord"; uid: number }
+  | { type: "useOfuda"; slot: number }
+  | { type: "leaveShop" }
+  // ── 永続化 ──
+  | { type: "restoreRun"; run: RunState }
   | { type: "backToMenu" };
 
 // ── 永続化（natype:fuda） ──

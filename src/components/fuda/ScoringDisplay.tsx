@@ -1,7 +1,16 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { CHARM_DEFS } from "@/lib/fuda/charms";
+import {
+  playCharm,
+  playGlassBreak,
+  playMiss,
+  playUnit,
+  playWordScore,
+  playYaku,
+} from "@/lib/fuda/sfx";
 import { ATTR_META } from "./attrMeta";
 import type { FxEvent, RunState } from "@/types/fuda";
 
@@ -54,6 +63,42 @@ export function ScoringDisplay({ run }: ScoringDisplayProps) {
     : null;
 
   const pops = run.fxQueue.slice(-VISIBLE_FX);
+
+  // 効果音: 新しい fx をカーソル以降だけ再生する（連続正解はピッチが上がる）
+  const soundCursorRef = useRef(0);
+  const streakRef = useRef(0);
+  useEffect(() => {
+    const queue = run.fxQueue;
+    if (queue.length === 0) return;
+    const fresh = queue.filter((fx) => fx.seq > soundCursorRef.current);
+    if (fresh.length === 0) return;
+    soundCursorRef.current = queue[queue.length - 1].seq;
+    fresh.forEach((fx, i) => {
+      const delay = Math.min(i * 0.06, 0.42);
+      switch (fx.kind) {
+        case "unitChip":
+          streakRef.current += 1;
+          playUnit(fx.attr, streakRef.current, delay);
+          break;
+        case "miss":
+          streakRef.current = 0;
+          playMiss(delay);
+          break;
+        case "yaku":
+          playYaku(delay);
+          break;
+        case "charmProc":
+          playCharm(delay);
+          break;
+        case "charmBreak":
+          playGlassBreak(delay);
+          break;
+        case "wordScore":
+          playWordScore(delay);
+          break;
+      }
+    });
+  }, [run.fxQueue]);
 
   return (
     <div className="rounded-lg border border-border bg-background/60 px-4 py-3 min-h-[7.5rem] flex flex-col justify-between">

@@ -1,20 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFudaGame } from "@/hooks/useFudaGame";
 import { useKeyboardInput } from "@/hooks/useKeyboardInput";
 import { KeyboardVisualizer } from "@/components/keyboard/KeyboardVisualizer";
 import { getKeysForKana } from "@/lib/kana-to-keys";
+import { deserializeRun } from "@/lib/fuda/save";
 import { unitEndOffsets } from "@/lib/fuda/segment";
+import {
+  ensureAudio,
+  playFail,
+  playMoney,
+  playRoundWin,
+  setSoundEnabled,
+} from "@/lib/fuda/sfx";
 import { getAvailableKana, filterWords } from "@/lib/word-filter";
-import { getProgress, getSettings, updateSettings } from "@/lib/storage";
-import { Eye, EyeOff } from "lucide-react";
+import {
+  getFudaSave,
+  getProgress,
+  getSettings,
+  updateFudaSave,
+  updateSettings,
+} from "@/lib/storage";
+import { Eye, EyeOff, Volume2, VolumeX } from "lucide-react";
+import { CharmShelf } from "./CharmShelf";
 import { FudaHud } from "./FudaHud";
 import { FudaMenu, MIN_POOL_SIZE } from "./FudaMenu";
 import { RoundBoard } from "./RoundBoard";
 import { RoundIntro } from "./RoundIntro";
 import { RoundResult } from "./RoundResult";
 import { RunResult } from "./RunResult";
+import { ShopScreen } from "./ShopScreen";
+import type { RunState } from "@/types/fuda";
 
 /** 完了済みレッスンから初期レベル（単語範囲）を推定する */
 function detectInitialLevel(): number {
@@ -29,6 +46,8 @@ function detectInitialLevel(): number {
 
 export function FudaGame() {
   const [level, setLevel] = useState(1);
+  const [savedRun, setSavedRun] = useState<RunState | null>(null);
+  const [soundOn, setSoundOn] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(
     () => getSettings().showKeyboard
   );
@@ -45,16 +64,33 @@ export function FudaGame() {
     [level]
   );
 
-  // 初期レベルは localStorage 由来のためマウント後に反映する
+  // 初期レベル・音設定・途中セーブは localStorage 由来のためマウント後に反映する
   useEffect(() => {
+    const save = getFudaSave();
+    setSoundEnabled(save.meta.soundEnabled);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLevel(detectInitialLevel());
+    setSoundOn(save.meta.soundEnabled);
   }, []);
+
+  // メニューに戻るたびに「続きから」の有無を確認する
+  useEffect(() => {
+    if (phase !== "menu") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSavedRun(deserializeRun(getFudaSave().currentRun));
+  }, [phase]);
 
   const startRun = useCallback(() => {
     if (wordPool.length < MIN_POOL_SIZE) return;
+    ensureAudio();
     game.startRun({ lessonLevel: level, wordPool });
   }, [game, level, wordPool]);
+
+  const continueRun = useCallback(() => {
+    if (!savedRun) return;
+    ensureAudio();
+    game.restoreRun(savedRun);
+  }, [game, savedRun]);
 
   const toggleKeyboard = useCallback(() => {
     setKeyboardVisible((prev) => {
@@ -64,15 +100,52 @@ export function FudaGame() {
     });
   }, []);
 
+  const toggleSound = useCallback(() => {
+    setSoundOn((prev) => {
+      const next = !prev;
+      setSoundEnabled(next);
+      updateFudaSave((save) => ({
+        ...save,
+        meta: { ...save.meta, soundEnabled: next },
+      }));
+      return next;
+    });
+  }, []);
+
+  // 画面遷移の効果音（roundResult の勝敗・クリア・敗北・ショップ入場）
+  const roundWon =
+    state.round !== null && state.round.scored >= state.round.quota;
+  const prevPhaseRef = useRef(phase);
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (prev === phase) return;
+    if (phase === "roundResult") {
+      if (roundWon) playRoundWin();
+      else playFail();
+    } else if (phase === "runClear") {
+      playRoundWin();
+    } else if (phase === "runFail") {
+      playFail();
+    } else if (phase === "shop") {
+      playMoney();
+    }
+  }, [phase, roundWon]);
+
   const handleKeyDown = useCallback(
     (event: { key: string; code: string }) => {
+      ensureAudio();
       switch (phase) {
         case "menu":
-          if (event.key === " " || event.key === "Enter") startRun();
+          if (event.key === " " || event.key === "Enter") {
+            if (savedRun) continueRun();
+            else startRun();
+          }
           return;
 
         case "roundIntro":
           if (event.key === " " || event.key === "Enter") game.beginRound();
+          if (event.key === "Escape") game.backToMenu(); // チェックポイント済みで安全
           return;
 
         case "round": {
@@ -80,7 +153,9 @@ export function FudaGame() {
             if (state.round?.active) {
               game.abortWord();
             } else if (
-              window.confirm("ランを中断してメニューに戻りますか？（進行は失われます）")
+              window.confirm(
+                "この勝負を中断してメニューに戻りますか？（勝負開始時点から再開できます）"
+              )
             ) {
               game.backToMenu();
             }
@@ -113,6 +188,11 @@ export function FudaGame() {
           }
           return;
 
+        case "shop":
+          if (event.key === "Enter") game.leaveShop();
+          if (event.key === "Escape") game.backToMenu(); // 購入状況ごと保存済み
+          return;
+
         case "runClear":
         case "runFail":
           if (event.key === "Enter") startRun();
@@ -120,7 +200,7 @@ export function FudaGame() {
           return;
       }
     },
-    [phase, state.round?.active, isPhysical, game, startRun]
+    [phase, state.round?.active, isPhysical, game, savedRun, continueRun, startRun]
   );
 
   const handleKeyUp = useCallback(
@@ -161,6 +241,12 @@ export function FudaGame() {
     return char ? getKeysForKana(char) : [];
   }, [phase, state.round?.active, state.deck]);
 
+  const showHud =
+    phase === "roundIntro" ||
+    phase === "round" ||
+    phase === "roundResult" ||
+    phase === "shop";
+
   return (
     <div className="space-y-4">
       {/* IME compositionイベント用の隠しテキストエリア */}
@@ -179,13 +265,20 @@ export function FudaGame() {
           level={level}
           onLevelChange={setLevel}
           wordPoolSize={wordPool.length}
+          savedRun={savedRun}
           onStart={startRun}
+          onContinue={continueRun}
         />
       )}
 
-      {(phase === "roundIntro" ||
-        phase === "round" ||
-        phase === "roundResult") && <FudaHud run={state} />}
+      {showHud && (
+        <div className="space-y-2">
+          <FudaHud run={state} />
+          {state.charms.length > 0 && phase !== "shop" && (
+            <CharmShelf run={state} />
+          )}
+        </div>
+      )}
 
       {phase === "roundIntro" && (
         <RoundIntro run={state} onBegin={game.beginRound} />
@@ -194,7 +287,18 @@ export function FudaGame() {
       {phase === "round" && (
         <>
           <RoundBoard run={state} />
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-1">
+            <button
+              onClick={toggleSound}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {soundOn ? (
+                <Volume2 className="h-3.5 w-3.5" />
+              ) : (
+                <VolumeX className="h-3.5 w-3.5" />
+              )}
+              効果音
+            </button>
             <button
               onClick={toggleKeyboard}
               className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -213,6 +317,23 @@ export function FudaGame() {
 
       {phase === "roundResult" && (
         <RoundResult run={state} onConfirm={game.confirmRoundResult} />
+      )}
+
+      {phase === "shop" && (
+        <ShopScreen
+          run={state}
+          onBuyCharm={game.buyCharm}
+          onBuyOfuda={game.buyOfuda}
+          onBuyScroll={game.buyScroll}
+          onBuyPack={game.buyPack}
+          onPickPackWord={game.pickPackWord}
+          onSellCharm={game.sellCharm}
+          onReroll={game.rerollShop}
+          onRemoveWord={game.removeDeckWord}
+          onCopyWord={game.copyDeckWord}
+          onUseOfuda={game.useOfuda}
+          onLeave={game.leaveShop}
+        />
       )}
 
       {(phase === "runClear" || phase === "runFail") && (

@@ -205,3 +205,22 @@
 .fuda-shake {
   animation: fuda-shake 0.25s ease-in-out;
 }
+
+@keyframes fuda-charm-proc {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  30% {
+    transform: scale(1.35);
+    filter: brightness(1.8);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+.fuda-charm-proc {
+  display: inline-block;
+  animation: fuda-charm-proc 0.4s ease-out;
+}

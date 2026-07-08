@@ -9,7 +9,7 @@
 
 import { naginataMappings } from "@/data/naginata/layout";
 import { getInputTypeForKana } from "@/lib/kana-to-keys";
-import type { KanaAttr } from "@/types/fuda";
+import type { KanaAttr, WordCardData } from "@/types/fuda";
 
 /** かな出力のみ対象（resolve-chord-to-kana と同じ基準）。漢字・記号・機能ラベルを除外 */
 function isKanaOutput(kana: string): boolean {
@@ -99,6 +99,12 @@ export function wordAttrProfile(word: string): Record<KanaAttr, number> {
     profile[classifyUnit(unit)]++;
   }
   return profile;
+}
+
+/** 単語からカードを構築する（セグメンテーションをキャッシュ） */
+export function buildCard(uid: number, word: string): WordCardData {
+  const units = segmentWord(word);
+  return { uid, word, units, attrs: units.map(classifyUnit) };
 }
 
 /**

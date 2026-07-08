@@ -4,9 +4,11 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import { BALANCE } from "@/lib/fuda/balance";
 import { createMenuState, fudaReducer } from "@/lib/fuda/engine";
 import { matchChordToHand, type HandChordCandidate } from "@/lib/fuda/input";
+import { serializeRun } from "@/lib/fuda/save";
 import { toKanaAttr } from "@/lib/fuda/segment";
 import { resolveChordEntry } from "@/lib/resolve-chord-to-kana";
-import type { KanaAttr, SchoolId } from "@/types/fuda";
+import { updateFudaSave } from "@/lib/storage";
+import type { KanaAttr, RunState, SchoolId } from "@/types/fuda";
 
 /**
  * 言霊札の状態管理フック
@@ -60,6 +62,8 @@ export function useFudaGame() {
   const clusterRef = useRef<Set<string>>(new Set());
   const pendingRef = useRef<ChordPending | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ラン終了時のメタ更新を1回に抑えるガード（seed 単位）
+  const finalizedSeedRef = useRef<number | null>(null);
 
   const clearSettleTimer = useCallback(() => {
     if (settleTimerRef.current !== null) {
@@ -203,6 +207,15 @@ export function useFudaGame() {
       schoolId?: SchoolId;
     }) => {
       resetChordState();
+      finalizedSeedRef.current = null;
+      // ラン開始をメタ統計に数え、アンロック状況をランにスナップショットする
+      const save = updateFudaSave((s) => ({
+        ...s,
+        meta: {
+          ...s.meta,
+          stats: { ...s.meta.stats, totalRuns: s.meta.stats.totalRuns + 1 },
+        },
+      }));
       dispatch({
         type: "startRun",
         seed: Date.now(),
@@ -210,7 +223,18 @@ export function useFudaGame() {
         wordPool: options.wordPool,
         stake: options.stake,
         schoolId: options.schoolId,
+        unlockedCharms: save.meta.unlockedCharms,
       });
+    },
+    [resetChordState]
+  );
+
+  /** チェックポイントからランを再開する（検証済みの RunState を渡すこと） */
+  const restoreRun = useCallback(
+    (run: RunState) => {
+      resetChordState();
+      finalizedSeedRef.current = null;
+      dispatch({ type: "restoreRun", run });
     },
     [resetChordState]
   );
@@ -243,7 +267,76 @@ export function useFudaGame() {
     dispatch({ type: "backToMenu" });
   }, [resetChordState]);
 
+  // ── ショップ操作（reducer 側で価格・枠のガードあり） ──
+
+  const buyCharm = useCallback((index: number) => {
+    dispatch({ type: "buyCharm", index });
+  }, []);
+  const buyOfuda = useCallback(() => dispatch({ type: "buyOfuda" }), []);
+  const buyScroll = useCallback(() => dispatch({ type: "buyScroll" }), []);
+  const buyPack = useCallback(() => dispatch({ type: "buyPack" }), []);
+  const pickPackWord = useCallback((word: string) => {
+    dispatch({ type: "pickPackWord", word });
+  }, []);
+  const sellCharm = useCallback((slot: number) => {
+    dispatch({ type: "sellCharm", slot });
+  }, []);
+  const rerollShop = useCallback(() => dispatch({ type: "rerollShop" }), []);
+  const removeDeckWord = useCallback((uid: number) => {
+    dispatch({ type: "removeDeckWord", uid });
+  }, []);
+  const copyDeckWord = useCallback((uid: number) => {
+    dispatch({ type: "copyDeckWord", uid });
+  }, []);
+  const useOfuda = useCallback((slot: number) => {
+    dispatch({ type: "useOfuda", slot });
+  }, []);
+  const leaveShop = useCallback(() => dispatch({ type: "leaveShop" }), []);
+
   // ── 副作用 ──
+
+  // チェックポイント保存（roundIntro/shop）とラン終了時のメタ更新
+  useEffect(() => {
+    const run = state;
+    if (run.phase === "roundIntro" || run.phase === "shop") {
+      // shop は購入のたびに state が変わり、そのつど上書き保存される
+      updateFudaSave((save) => ({ ...save, currentRun: serializeRun(run) }));
+      return;
+    }
+    if (
+      (run.phase === "runClear" || run.phase === "runFail") &&
+      finalizedSeedRef.current !== run.seed
+    ) {
+      finalizedSeedRef.current = run.seed;
+      const cleared = run.phase === "runClear";
+      updateFudaSave((save) => ({
+        ...save,
+        currentRun: null,
+        meta: {
+          ...save.meta,
+          stakeUnlocked: cleared
+            ? Math.max(
+                save.meta.stakeUnlocked,
+                Math.min(run.stake + 1, BALANCE.stakes.length)
+              )
+            : save.meta.stakeUnlocked,
+          stats: {
+            ...save.meta.stats,
+            wins: save.meta.stats.wins + (cleared ? 1 : 0),
+            bestAnte: Math.max(save.meta.stats.bestAnte, run.ante),
+            winsByStake: cleared
+              ? {
+                  ...save.meta.stats.winsByStake,
+                  [String(run.stake)]:
+                    (save.meta.stats.winsByStake[String(run.stake)] ?? 0) + 1,
+                }
+              : save.meta.stats.winsByStake,
+            totalKana: save.meta.stats.totalKana + run.stats.kanaTyped,
+          },
+        },
+      }));
+    }
+  }, [state]);
 
   // 刻限ボス: 締切で timeUp を発行する（残り時間の表示は UI ローカルで補間）
   useEffect(() => {
@@ -275,12 +368,24 @@ export function useFudaGame() {
   return {
     state,
     startRun,
+    restoreRun,
     beginRound,
     confirmRoundResult,
     toggleSelect,
     discardSelected,
     abortWord,
     backToMenu,
+    buyCharm,
+    buyOfuda,
+    buyScroll,
+    buyPack,
+    pickPackWord,
+    sellCharm,
+    rerollShop,
+    removeDeckWord,
+    copyDeckWord,
+    useOfuda,
+    leaveShop,
     handleKanaInput,
     handleChordKeyDown,
     handleChordKeyUp,
