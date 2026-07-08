@@ -71,6 +71,8 @@ function chordKey(codes: string[]): string {
 
 // 索引キー → かな のマップを優先度順に構築（first-wins）
 const chordToKana = new Map<string, string>();
+// 索引キー → エントリ（かな + inputType）。言霊札の実測属性判定に使う。
+const chordEntries = new Map<string, { kana: string; inputType: InputType }>();
 // 全エントリ（キー集合 → かな）。目標照合の「拡張可能性」判定に使う。
 const entries: { keySet: Set<string>; kana: string }[] = [];
 
@@ -88,6 +90,7 @@ for (const m of sorted) {
   const key = chordKey(codes);
   if (!chordToKana.has(key)) {
     chordToKana.set(key, m.kana);
+    chordEntries.set(key, { kana: m.kana, inputType: m.inputType });
     entries.push({ keySet: new Set(codes), kana: m.kana });
   }
 }
@@ -100,6 +103,20 @@ for (const m of sorted) {
 export function resolveChordToKana(codes: string[]): string | null {
   if (codes.length === 0) return null;
   return chordToKana.get(chordKey(codes)) ?? null;
+}
+
+export interface ChordEntry {
+  kana: string;
+  inputType: InputType;
+}
+
+/**
+ * 押された物理キーの集合から、かなと入力タイプ（inputType）を解決する。
+ * 言霊札（fuda）が「実際にチョードで確定したか」を属性判定するために使う。
+ */
+export function resolveChordEntry(codes: string[]): ChordEntry | null {
+  if (codes.length === 0) return null;
+  return chordEntries.get(chordKey(codes)) ?? null;
 }
 
 /** a が b の（同集合含む）部分集合か */
