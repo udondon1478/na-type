@@ -64,7 +64,8 @@ src/
 │   ├── naginata/               # 薙刀式セクション
 │   │   ├── page.tsx            # レッスン選択
 │   │   ├── drill/page.tsx      # 単語ドリル
-│   │   ├── game/page.tsx       # 言霊ディフェンス（ローグライク・タイピングゲーム）
+│   │   ├── game/page.tsx       # 言霊ディフェンス（ZType型・防衛タイピングゲーム）
+│   │   ├── fuda/page.tsx       # 言霊札（Balatro型・ローグライクスコアアタック）
 │   │   └── lesson/[id]/       # レッスン実行（動的ルート）
 │   │       ├── page.tsx        # Server Component + generateStaticParams
 │   │       └── LessonClient.tsx # Client Component（実際のUI）
@@ -73,16 +74,18 @@ src/
 │   ├── keyboard/               # SVGキーボードビジュアライザー
 │   ├── typing/                 # タイピングエリア・目標テキスト
 │   ├── game/                   # 言霊ディフェンスのUI（フィールド・HUD・強化選択等）
+│   ├── fuda/                   # 言霊札のUI（手札・採点演出・ショップ・メニュー等）
 │   ├── stats/                  # 統計表示
 │   ├── layout/                 # ヘッダー等
 │   └── ui/                     # shadcn/ui コンポーネント（自動生成）
 ├── data/naginata/
 │   ├── layout.ts               # 自動生成（parse-karabiner.ts の出力）
 │   ├── lessons.ts              # レッスン1-8 定義
-│   └── words.ts                # 単語ドリル・ゲーム共用の単語辞書
+│   └── words.ts                # 単語ドリル・ゲーム共用の単語辞書（言霊札向け属性拡張済み）
 ├── hooks/                      # カスタムフック
 ├── lib/                        # ユーティリティ
-│   └── game/                   # ゲームの純粋ロジック（ウェーブ・スコア・強化・chord照合）
+│   ├── game/                   # 言霊ディフェンスの純粋ロジック（ウェーブ・スコア・強化・chord照合）
+│   └── fuda/                   # 言霊札の純粋ロジック（reducer・採点・役・お守り・ショップ・SFX）
 └── types/                      # TypeScript型定義
 ```
 
@@ -97,7 +100,10 @@ src/
 | `src/lib/kana-to-keys.ts` | かな→物理キー逆引き | 最もシンプルな入力方法を優先 |
 | `src/lib/resolve-chord-to-kana.ts` | 物理キー集合→かな逆引き（全inputType） | physicalモードの同時打鍵判定。非かな・機能エントリは除外 |
 | `src/hooks/useKotodamaGame.ts` | 言霊ディフェンスの状態機械＋rAFゲームループ | menu→playing→upgrade→gameover。内部状態はrefでミューテートしスナップショットをstateに同期 |
-| `src/lib/game/engine.ts` | ゲームの純粋ロジック | matchChordToEnemies は matchChordToTarget の複数敵拡張 |
+| `src/lib/game/engine.ts` | 言霊ディフェンスの純粋ロジック | matchChordToEnemies は matchChordToTarget の複数敵拡張 |
+| `src/lib/fuda/engine.ts` | 言霊札の心臓部（純粋reducer） | Date.now/Math.random/IO禁止。時刻はイベントの`at`、乱数はrngState経由。イベント列でラン再現可能 |
+| `src/hooks/useFudaGame.ts` | 言霊札のフック層 | useReducer+chord判定refs。dispatch反映前のchord照合は「影（shadowRef）」で整合。保存・音・タイマーはここ |
+| `src/lib/fuda/balance.ts` | 言霊札の全チューニング定数 | ノルマ曲線・経済・段位。調整は `npx tsx scripts/fuda-sim.ts` で計測してから |
 
 ## 薙刀式の入力タイプ
 
@@ -117,6 +123,7 @@ natype:sessions  → SessionResult[]（直近100件）
 natype:progress  → Record<string, LessonProgress>
 natype:settings  → AppSettings
 natype:game      → Record<string, GameRecord>（言霊ディフェンスのレベル別記録）
+natype:fuda      → FudaSave（言霊札: メタ進行＋ラン途中チェックポイント。検証はlib/fuda/save.ts）
 ```
 
 ## Karabiner JSONパーサー
@@ -141,6 +148,7 @@ npx tsx scripts/parse-karabiner.ts
 - [x] localStorage永続化
 - [x] 単語ドリルモード（レッスン範囲フィルタ付き）
 - [x] 言霊ディフェンス（ローグライク・タイピングゲーム: ウェーブ制＋強化選択＋レベル別ハイスコア）
+- [x] 言霊札（Balatro型ローグライク: かな属性×役×お守りのビルド構築、8幕ノルマ制、段位＋実績アンロック、WebAudio効果音、中断保存）
 
 ## 未実装（後続フェーズ）
 
@@ -155,6 +163,8 @@ npx tsx scripts/parse-karabiner.ts
 ## 開発時の注意
 
 - `npm run build` で静的エクスポートが成功することを常に確認
+- 言霊札に触れたら `npx tsx scripts/fuda-check.ts`（エンジン自己検査）を実行。バランス調整は `npx tsx scripts/fuda-sim.ts` で段位×速度プロファイル別の勝率を見てから
+- 言霊札の語彙を増やすときは `words.ts` に追記するだけ（属性・役候補は自動導出）。ただしレッスン8までの累積かなのみ使用可（fuda-checkが検証）
 - 動的ルート（`[id]`）には `generateStaticParams()` が必須
 - `"use client"` と `generateStaticParams` は同じファイルに置けない（Server/Client分離）
 - shadcn/ui コンポーネントは `npx shadcn@latest add <name>` で追加

@@ -118,6 +118,25 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
+
+        <Link href="/naginata/fuda">
+          <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-xl">言霊札</CardTitle>
+                <Badge variant="secondary">ゲーム</Badge>
+              </div>
+              <CardDescription>
+                かなの属性と役でスコアを爆発させる、Balatro型ローグライク札遊び。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                お守りのビルドで8幕のノルマを越えろ
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">

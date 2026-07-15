@@ -1,11 +1,14 @@
 import type { SessionResult, LessonProgress, AppSettings } from "@/types/stats";
 import type { GameRecord } from "@/types/game";
+import type { FudaSave } from "@/types/fuda";
+import { normalizeSave } from "@/lib/fuda/save";
 
 const KEYS = {
   sessions: "natype:sessions",
   progress: "natype:progress",
   settings: "natype:settings",
   game: "natype:game",
+  fuda: "natype:fuda",
 } as const;
 
 const MAX_SESSIONS = 100;
@@ -110,4 +113,22 @@ export function updateGameRecord(
 
   setItem(KEYS.game, records);
   return { isNewRecord };
+}
+
+/**
+ * 言霊札のセーブデータ（メタ進行 + ラン途中チェックポイント）。
+ * 正規化・検証は lib/fuda/save.ts が担い、ここは薄い IO に徹する。
+ */
+export function getFudaSave(): FudaSave {
+  return normalizeSave(getItem<unknown>(KEYS.fuda, null));
+}
+
+export function setFudaSave(save: FudaSave): void {
+  setItem(KEYS.fuda, save);
+}
+
+export function updateFudaSave(mutate: (save: FudaSave) => FudaSave): FudaSave {
+  const next = mutate(getFudaSave());
+  setFudaSave(next);
+  return next;
 }

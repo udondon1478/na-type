@@ -43,6 +43,20 @@ export default function NaginataPage() {
             </CardHeader>
           </Card>
         </Link>
+
+        <Link href="/naginata/fuda">
+          <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">言霊札</CardTitle>
+                <Badge variant="secondary">ゲーム</Badge>
+              </div>
+              <CardDescription>
+                属性と役とお守りのビルドでノルマを越える、Balatro型スコアアタック
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </Link>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
