@@ -6,8 +6,8 @@ import {
   KEYBOARD_KEYS,
   KEYBOARD_WIDTH,
   KEYBOARD_HEIGHT,
-  NAGINATA_KANA_LABELS,
 } from "./KeyboardLayout";
+import { NAGINATA_KEY_LABELS } from "./naginata-labels";
 
 type LayoutView = "qwerty" | "kana";
 
@@ -23,7 +23,7 @@ interface KeyboardVisualizerProps {
 export function KeyboardVisualizer({
   highlightKeys = [],
   pressedKeys = [],
-  defaultView = "qwerty",
+  defaultView = "kana",
 }: KeyboardVisualizerProps) {
   const [view, setView] = useState<LayoutView>(defaultView);
 
@@ -58,22 +58,34 @@ export function KeyboardVisualizer({
         </button>
       </div>
 
+      {view === "kana" && (
+        <p className="text-[11px] leading-tight text-muted-foreground text-right">
+          中央=単打／右上=Space同時（センターシフト）。
+          Q・T・Y・U は単打なし、Z・X・/ はシフトなし。
+        </p>
+      )}
+
       <svg
         viewBox={`-4 -4 ${KEYBOARD_WIDTH + 8} ${KEYBOARD_HEIGHT + 8}`}
         className="w-full max-w-2xl"
       >
         {KEYBOARD_KEYS.map((keyInfo) => {
           const label =
-            view === "kana"
-              ? NAGINATA_KANA_LABELS[keyInfo.karabinerCode] ??
-                keyInfo.qwertyLabel
+            keyInfo.karabinerCode === "spacebar" && view === "kana"
+              ? "親指シフト"
               : keyInfo.qwertyLabel;
+          const kanaLabel =
+            view === "kana"
+              ? NAGINATA_KEY_LABELS[keyInfo.karabinerCode]
+              : undefined;
 
           return (
             <Key
               key={keyInfo.karabinerCode}
               keyInfo={keyInfo}
               label={label}
+              kanaLabel={kanaLabel}
+              showKanaLayers={view === "kana"}
               isHighlighted={highlightSet.has(keyInfo.karabinerCode)}
               isPressed={pressedSet.has(keyInfo.karabinerCode)}
               isHomeRow={homeRowKeys.has(keyInfo.karabinerCode)}

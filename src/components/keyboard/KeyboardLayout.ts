@@ -108,16 +108,3 @@ export const KEYBOARD_HEIGHT =
 export const keyByKarabinerCode = new Map<string, PhysicalKeyInfo>(
   KEYBOARD_KEYS.map((k) => [k.karabinerCode, k])
 );
-
-/** 薙刀式v14のかなラベル（単独入力のみ） */
-export const NAGINATA_KANA_LABELS: Record<string, string> = {
-  // 上段（Q行）
-  q: "ゔ", w: "き", e: "て", r: "し", t: "っ",
-  y: "っ", u: "る", i: "す", o: "は", p: "く",
-  // 中段（A行・ホームポジション）
-  a: "ろ", s: "け", d: "と", f: "か", g: "っ",
-  h: "く", j: "あ", k: "い", l: "う", semicolon: "ー",
-  // 下段（Z行）
-  z: "ほ", x: "ひ", c: "こ", v: "そ", b: "た",
-  n: "な", m: "ん", comma: "ら", period: "れ", slash: "ー",
-};
