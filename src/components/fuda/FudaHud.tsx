@@ -3,9 +3,8 @@
 import { cn } from "@/lib/utils";
 import { stakeMod } from "@/lib/fuda/balance";
 import { bossForRound } from "@/lib/fuda/engine";
+import { ROUND_LABELS } from "@/lib/fuda/constants";
 import type { RunState } from "@/types/fuda";
-
-const ROUND_LABELS = ["序戦", "破戦", "急戦"] as const;
 
 interface FudaHudProps {
   run: RunState;

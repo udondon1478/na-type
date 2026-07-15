@@ -8,11 +8,14 @@
  */
 
 import { CHARM_DEFS } from "./charms";
+import { OFUDA_DEFS } from "./items";
 import { buildCard } from "./segment";
+import { YAKU_DEFS } from "./yaku";
 import type {
   CharmId,
   FudaMeta,
   FudaSave,
+  OfudaId,
   RunState,
 } from "@/types/fuda";
 
@@ -42,8 +45,35 @@ export function normalizeSave(raw: unknown): FudaSave {
   if (typeof raw !== "object" || raw === null) return defaultSave();
   const obj = raw as Partial<FudaSave>;
   if (obj.version !== 1) return defaultSave();
-  const meta = { ...defaultMeta(), ...(obj.meta ?? {}) };
-  meta.stats = { ...defaultMeta().stats, ...(obj.meta?.stats ?? {}) };
+
+  // meta は浅いマージだと壊れた配列・オブジェクトがそのまま残るため、
+  // 型が合わないフィールドは既定値へ個別にフォールバックする。
+  const def = defaultMeta();
+  const src = (typeof obj.meta === "object" && obj.meta !== null
+    ? obj.meta
+    : {}) as Record<string, unknown>;
+
+  const meta: FudaMeta = {
+    soundEnabled:
+      typeof src.soundEnabled === "boolean" ? src.soundEnabled : def.soundEnabled,
+    stakeUnlocked: isNumber(src.stakeUnlocked)
+      ? src.stakeUnlocked
+      : def.stakeUnlocked,
+    unlockedCharms: isStringArray(src.unlockedCharms)
+      ? (src.unlockedCharms as FudaMeta["unlockedCharms"])
+      : def.unlockedCharms,
+    unlockedSchools: isStringArray(src.unlockedSchools)
+      ? (src.unlockedSchools as FudaMeta["unlockedSchools"])
+      : def.unlockedSchools,
+    achievements: isPlainObject(src.achievements)
+      ? (src.achievements as FudaMeta["achievements"])
+      : def.achievements,
+    stats: {
+      ...def.stats,
+      ...(isPlainObject(src.stats) ? src.stats : {}),
+    },
+  };
+
   return { version: 1, meta, currentRun: obj.currentRun ?? null };
 }
 
@@ -64,6 +94,38 @@ function isNumber(v: unknown): v is number {
 
 function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((x) => typeof x === "string");
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** ショップのチェックポイントが未知IDを含まないか検証する（改名・削除跨ぎでの参照落ち対策） */
+function shopOffersValid(shop: unknown): boolean {
+  if (!isPlainObject(shop)) return false;
+  if (
+    Array.isArray(shop.charmOffers) &&
+    !shop.charmOffers.every(
+      (o) => isPlainObject(o) && typeof o.charmId === "string" && o.charmId in CHARM_DEFS
+    )
+  ) {
+    return false;
+  }
+  const ofudaOffer = shop.ofudaOffer;
+  if (
+    ofudaOffer != null &&
+    !(isPlainObject(ofudaOffer) && typeof ofudaOffer.ofudaId === "string" && ofudaOffer.ofudaId in OFUDA_DEFS)
+  ) {
+    return false;
+  }
+  const scrollOffer = shop.scrollOffer;
+  if (
+    scrollOffer != null &&
+    !(isPlainObject(scrollOffer) && typeof scrollOffer.yakuId === "string" && scrollOffer.yakuId in YAKU_DEFS)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -91,7 +153,10 @@ export function deserializeRun(raw: unknown): RunState | null {
       return null;
     }
     if (!isStringArray(r.wordPool) || !Array.isArray(r.deck)) return null;
-    if (r.phase === "shop" && (typeof r.shop !== "object" || r.shop === null)) {
+    // ショップのチェックポイントは各オファーの参照先まで検証する。
+    // 未知 ID を含むと ShopScreen が CHARM_DEFS[...] 等の undefined 参照で落ちるため、
+    // 復元を諦めて null を返す（このファイルの「壊れたデータは null」方針に合わせる）。
+    if (r.phase === "shop" && !shopOffersValid(r.shop)) {
       return null;
     }
 
@@ -117,10 +182,18 @@ export function deserializeRun(raw: unknown): RunState | null {
         })
       : [];
 
+    // 御札: 未知の ID は落とす（お守りと同じ方針）
+    const ofudas = Array.isArray(r.ofudas)
+      ? r.ofudas.filter(
+          (o): o is OfudaId => typeof o === "string" && o in OFUDA_DEFS
+        )
+      : [];
+
     return {
       ...(raw as RunState),
       deck,
       charms,
+      ofudas,
       round: null,
       fxQueue: [],
       fxSeq: 0,

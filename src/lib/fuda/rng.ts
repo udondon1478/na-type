@@ -42,7 +42,7 @@ export function shuffle<T>(state: number, arr: readonly T[]): [T[], number] {
   return [out, s];
 }
 
-/** 文字列や任意の整数から初期シードを作る */
+/** 整数から初期シードを作る（0 でも十分拡散するよう1回混ぜる） */
 export function seedFrom(n: number): number {
   // 0 でも十分拡散するよう1回混ぜる
   return next(n | 0)[1];

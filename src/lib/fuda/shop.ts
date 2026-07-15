@@ -62,17 +62,19 @@ export function rollShop(run: RunState): [ShopState, number] {
   return [shop, s];
 }
 
-/** リロール: お守り・御札・巻物の枠を引き直す（パックと価格系は据え置き） */
+/**
+ * リロール: お守り・御札・巻物の枠を引き直す。
+ * 価格は rollShop の再計算値をそのまま使う（算盤購入後の割引がパック・削除にも反映される）。
+ * パックの開封状態と保留アクションだけは据え置き、リロール価格は加算する。
+ */
 export function rerollShop(run: RunState, shop: ShopState): [ShopState, number] {
   const [fresh, s] = rollShop(run);
   return [
     {
       ...fresh,
-      packPrice: shop.packPrice,
       packSold: shop.packSold,
       packChoice: shop.packChoice,
       pendingAction: shop.pendingAction,
-      removePrice: shop.removePrice,
       rerollPrice: shop.rerollPrice + BALANCE.shop.rerollStep,
     },
     s,

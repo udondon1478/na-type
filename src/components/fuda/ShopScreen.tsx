@@ -213,7 +213,11 @@ export function ShopScreen({
             </button>
             <button
               onClick={() => setRemoveMode((v) => !v)}
-              disabled={pendingAction !== null || run.deck.length <= 1}
+              disabled={
+                pendingAction !== null ||
+                run.deck.length <= 1 ||
+                run.money < shop.removePrice
+              }
               className={cn(
                 "px-3 py-1.5 rounded-md border text-sm transition-colors disabled:opacity-40",
                 removeMode

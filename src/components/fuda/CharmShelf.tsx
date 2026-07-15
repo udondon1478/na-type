@@ -40,7 +40,7 @@ export function CharmShelf({ run, onSell }: CharmShelfProps) {
         const sealed = slot === sealedIndex;
         return (
           <div
-            key={charm.id}
+            key={slot}
             title={`${def.name}: ${def.describe(charm.counter)}${sealed ? "（封印中）" : ""}`}
             className={cn(
               "relative h-9 rounded border border-border bg-card px-1.5 flex items-center gap-1 font-mono text-sm",

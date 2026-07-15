@@ -2,9 +2,8 @@
 
 import type { AchievementDef } from "@/lib/fuda/unlocks";
 import { YAKU_DEFS } from "@/lib/fuda/yaku";
+import { ROUND_LABELS } from "@/lib/fuda/constants";
 import type { RunState, YakuId } from "@/types/fuda";
-
-const ROUND_LABELS = ["序戦", "破戦", "急戦"] as const;
 
 interface RunResultProps {
   run: RunState;

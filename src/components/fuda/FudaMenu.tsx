@@ -4,9 +4,8 @@ import { cn } from "@/lib/utils";
 import { BALANCE } from "@/lib/fuda/balance";
 import { canUseSchool, SCHOOL_DEFS } from "@/lib/fuda/schools";
 import { ACHIEVEMENT_DEFS } from "@/lib/fuda/unlocks";
+import { ROUND_LABELS } from "@/lib/fuda/constants";
 import type { FudaMeta, RunState, SchoolId } from "@/types/fuda";
-
-const ROUND_LABELS = ["序戦", "破戦", "急戦"] as const;
 
 interface FudaMenuProps {
   level: number;
