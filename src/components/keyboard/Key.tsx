@@ -9,6 +9,11 @@ interface KeyProps {
   label: string;
   kanaLabel?: NaginataKeyLabel;
   showKanaLayers?: boolean;
+  /**
+   * 現在ハイライト中のかなが単打面／シフト面のどちらか。
+   * 指定されると、対象でない面をトーンダウンして「今狙う面」を明確にする。
+   */
+  targetLayer?: "single" | "shift";
   isHighlighted: boolean;
   isPressed: boolean;
   isHomeRow: boolean;
@@ -19,6 +24,7 @@ export function Key({
   label,
   kanaLabel,
   showKanaLayers = false,
+  targetLayer,
   isHighlighted,
   isPressed,
   isHomeRow,
@@ -36,6 +42,13 @@ export function Key({
     fillClass = "fill-primary/30 stroke-primary";
     textClass = "fill-foreground";
   }
+
+  // ハイライト／押下時、狙っていない面は暗く落として「今打つ面」を目立たせる。
+  const emphasized = isPressed || isHighlighted;
+  const singleClass =
+    emphasized && targetLayer === "shift" ? cn(textClass, "opacity-40") : textClass;
+  const shiftClass =
+    emphasized && targetLayer === "single" ? cn(textClass, "opacity-40") : textClass;
 
   return (
     <g className={cn(baseClasses)}>
@@ -55,7 +68,7 @@ export function Key({
               y={keyInfo.y + 9}
               textAnchor="end"
               dominantBaseline="central"
-              className={cn(textClass, "font-mono pointer-events-none")}
+              className={cn(shiftClass, "font-mono pointer-events-none")}
               fontSize={kanaLabel.shift.length > 1 ? 9 : 10}
             >
               {kanaLabel.shift}
@@ -67,18 +80,20 @@ export function Key({
               y={keyInfo.y + keyInfo.height / 2 + 2}
               textAnchor="middle"
               dominantBaseline="central"
-              className={cn(textClass, "text-sm font-mono pointer-events-none")}
+              className={cn(singleClass, "text-sm font-mono pointer-events-none")}
               fontSize={kanaLabel.single.length > 1 ? 12 : 16}
             >
               {kanaLabel.single}
             </text>
           ) : (
+            // 単打なしキー（Q/T/Y/U）とスペースキーのフォールバック。
+            // 淡色（opacity-35）だが textClass を通すのでハイライト／押下は反映される。
             <text
               x={keyInfo.x + keyInfo.width / 2}
               y={keyInfo.y + keyInfo.height / 2 + 2}
               textAnchor="middle"
               dominantBaseline="central"
-              className="fill-muted-foreground/35 text-xs font-mono pointer-events-none"
+              className={cn(textClass, "opacity-35 text-xs font-mono pointer-events-none")}
               fontSize={12}
             >
               {label}

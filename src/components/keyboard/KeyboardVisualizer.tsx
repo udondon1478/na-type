@@ -30,6 +30,16 @@ export function KeyboardVisualizer({
   const highlightSet = new Set(highlightKeys);
   const pressedSet = new Set(pressedKeys);
 
+  // ハイライト対象のかなが単打面かシフト面か。
+  // getKeysForKana は shifted かなのガイドに必ず "spacebar" を含めるため、
+  // spacebar がハイライトされていればシフト面が今の狙い。
+  const targetLayer: "single" | "shift" | undefined =
+    highlightSet.size === 0
+      ? undefined
+      : highlightSet.has("spacebar")
+        ? "shift"
+        : "single";
+
   // ホームポジションのキー
   const homeRowKeys = new Set(["f", "j", "d", "k"]);
 
@@ -37,6 +47,7 @@ export function KeyboardVisualizer({
     <div className="space-y-2">
       <div className="flex justify-end gap-1">
         <button
+          type="button"
           onClick={() => setView("qwerty")}
           className={`px-2 py-0.5 text-xs rounded transition-colors ${
             view === "qwerty"
@@ -47,6 +58,7 @@ export function KeyboardVisualizer({
           QWERTY
         </button>
         <button
+          type="button"
           onClick={() => setView("kana")}
           className={`px-2 py-0.5 text-xs rounded transition-colors ${
             view === "kana"
@@ -86,6 +98,7 @@ export function KeyboardVisualizer({
               label={label}
               kanaLabel={kanaLabel}
               showKanaLayers={view === "kana"}
+              targetLayer={targetLayer}
               isHighlighted={highlightSet.has(keyInfo.karabinerCode)}
               isPressed={pressedSet.has(keyInfo.karabinerCode)}
               isHomeRow={homeRowKeys.has(keyInfo.karabinerCode)}
