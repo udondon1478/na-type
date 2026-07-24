@@ -2,10 +2,18 @@
 
 import type { PhysicalKeyInfo } from "@/types/layout";
 import { cn } from "@/lib/utils";
+import type { NaginataKeyLabel } from "./naginata-labels";
 
 interface KeyProps {
   keyInfo: PhysicalKeyInfo;
   label: string;
+  kanaLabel?: NaginataKeyLabel;
+  showKanaLayers?: boolean;
+  /**
+   * 現在ハイライト中のかなが単打面／シフト面のどちらか。
+   * 指定されると、対象でない面をトーンダウンして「今狙う面」を明確にする。
+   */
+  targetLayer?: "single" | "shift";
   isHighlighted: boolean;
   isPressed: boolean;
   isHomeRow: boolean;
@@ -14,6 +22,9 @@ interface KeyProps {
 export function Key({
   keyInfo,
   label,
+  kanaLabel,
+  showKanaLayers = false,
+  targetLayer,
   isHighlighted,
   isPressed,
   isHomeRow,
@@ -32,6 +43,13 @@ export function Key({
     textClass = "fill-foreground";
   }
 
+  // ハイライト／押下時、狙っていない面は暗く落として「今打つ面」を目立たせる。
+  const emphasized = isPressed || isHighlighted;
+  const singleClass =
+    emphasized && targetLayer === "shift" ? cn(textClass, "opacity-40") : textClass;
+  const shiftClass =
+    emphasized && targetLayer === "single" ? cn(textClass, "opacity-40") : textClass;
+
   return (
     <g className={cn(baseClasses)}>
       <rect
@@ -42,16 +60,58 @@ export function Key({
         rx={6}
         className={cn(fillClass, "stroke-1")}
       />
-      <text
-        x={keyInfo.x + keyInfo.width / 2}
-        y={keyInfo.y + keyInfo.height / 2 + 1}
-        textAnchor="middle"
-        dominantBaseline="central"
-        className={cn(textClass, "text-sm font-mono pointer-events-none")}
-        fontSize={label.length > 1 ? 11 : 14}
-      >
-        {label}
-      </text>
+      {showKanaLayers ? (
+        <>
+          {kanaLabel?.shift && (
+            <text
+              x={keyInfo.x + keyInfo.width - 7}
+              y={keyInfo.y + 9}
+              textAnchor="end"
+              dominantBaseline="central"
+              className={cn(shiftClass, "font-mono pointer-events-none")}
+              fontSize={kanaLabel.shift.length > 1 ? 9 : 10}
+            >
+              {kanaLabel.shift}
+            </text>
+          )}
+          {kanaLabel?.single ? (
+            <text
+              x={keyInfo.x + keyInfo.width / 2}
+              y={keyInfo.y + keyInfo.height / 2 + 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+              className={cn(singleClass, "text-sm font-mono pointer-events-none")}
+              fontSize={kanaLabel.single.length > 1 ? 12 : 16}
+            >
+              {kanaLabel.single}
+            </text>
+          ) : (
+            // 単打なしキー（Q/T/Y/U）とスペースキーのフォールバック。
+            // 淡色（opacity-35）だが textClass を通すのでハイライト／押下は反映される。
+            <text
+              x={keyInfo.x + keyInfo.width / 2}
+              y={keyInfo.y + keyInfo.height / 2 + 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+              className={cn(textClass, "opacity-35 text-xs font-mono pointer-events-none")}
+              fontSize={12}
+            >
+              {label}
+            </text>
+          )}
+        </>
+      ) : (
+        <text
+          x={keyInfo.x + keyInfo.width / 2}
+          y={keyInfo.y + keyInfo.height / 2 + 1}
+          textAnchor="middle"
+          dominantBaseline="central"
+          className={cn(textClass, "text-sm font-mono pointer-events-none")}
+          fontSize={label.length > 1 ? 11 : 14}
+        >
+          {label}
+        </text>
+      )}
       {isHomeRow && (
         <circle
           cx={keyInfo.x + keyInfo.width / 2}
